@@ -61,7 +61,7 @@ export async function getContracts(hotelId?: string): Promise<Contract[]> {
     } else {
       q = query(collection(db, 'contracts'), orderBy('startDate', 'desc'));
     }
-    const snapshot = await withTimeout(getDocs(q), 600);
+    const snapshot = await withTimeout(getDocs(q), 350);
     if (!snapshot.empty) {
       const live = snapshot.docs.map((d) => mapContract(d.id, d.data()));
       setCachedData(CACHE_KEYS.CONTRACTS, live);
@@ -80,7 +80,7 @@ export async function getContract(id: string): Promise<Contract | null> {
   if (found) return found;
 
   try {
-    const snap = await withTimeout(getDoc(doc(db, 'contracts', id)), 600);
+    const snap = await withTimeout(getDoc(doc(db, 'contracts', id)), 350);
     if (snap.exists()) return mapContract(snap.id, snap.data());
   } catch {}
   return null;
@@ -105,7 +105,7 @@ export async function findActiveContractForDate(
       where('hotelId', '==', hotelId),
       where('status', '==', 'active')
     );
-    const snapshot = await withTimeout(getDocs(q), 600);
+    const snapshot = await withTimeout(getDocs(q), 350);
     for (const d of snapshot.docs) {
       const contract = mapContract(d.id, d.data());
       if (isDateInRange(new Date(deliveryDate), new Date(contract.startDate), new Date(contract.endDate))) {
@@ -122,7 +122,7 @@ export async function getActiveContracts(): Promise<Contract[]> {
   const activeCached = cached.filter((c) => c.status === 'active');
   try {
     const q = query(collection(db, 'contracts'), where('status', '==', 'active'), orderBy('endDate', 'asc'));
-    const snapshot = await withTimeout(getDocs(q), 600);
+    const snapshot = await withTimeout(getDocs(q), 350);
     if (!snapshot.empty) {
       return snapshot.docs.map((d) => mapContract(d.id, d.data()));
     }
@@ -198,7 +198,7 @@ export async function getContractItems(contractId: string): Promise<ContractItem
       where('active', '==', true),
       orderBy('productName', 'asc')
     );
-    const snapshot = await withTimeout(getDocs(q), 600);
+    const snapshot = await withTimeout(getDocs(q), 350);
     if (!snapshot.empty) {
       const live = snapshot.docs.map((d) => mapContractItem(d.id, d.data()));
       setCachedData(CACHE_KEYS.CONTRACT_ITEMS, [...cached.filter((i) => i.contractId !== contractId), ...live]);
@@ -248,4 +248,21 @@ export async function addContractItem(
   }).catch(() => {});
 
   return newId;
+}
+
+export async function updateContractItem(
+  contractId: string,
+  itemId: string,
+  data: Partial<Omit<ContractItem, 'id' | 'contractId' | 'createdAt'>>
+): Promise<void> {
+  const cached = getCachedData<ContractItem[]>(CACHE_KEYS.CONTRACT_ITEMS, []);
+  const updated = cached.map((ci) =>
+    ci.id === itemId ? { ...ci, ...data, updatedAt: new Date() } : ci
+  );
+  setCachedData(CACHE_KEYS.CONTRACT_ITEMS, updated);
+
+  updateDoc(doc(db, 'contracts', contractId, 'items', itemId), {
+    ...data,
+    updatedAt: serverTimestamp(),
+  }).catch(() => {});
 }

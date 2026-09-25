@@ -14,6 +14,7 @@ import { createAuditLog } from '../../services/auditService';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../config/firebase';
 import { validateLogoFile } from '../../services/hotelService';
+import { withTimeout } from '../../utils/localStore';
 import type { CompanySettings } from '../../types';
 
 const SettingsPage: React.FC = () => {
@@ -55,18 +56,41 @@ const SettingsPage: React.FC = () => {
       if (logoFile) {
         const error = validateLogoFile(logoFile);
         if (error) { addToast('error', 'Error', error); setSaving(false); return; }
-        const ext = logoFile.name.split('.').pop() || 'png';
-        const storageRef = ref(storage, `company/logo.${ext}`);
-        await uploadBytes(storageRef, logoFile, { contentType: logoFile.type });
-        updates.companyLogo = await getDownloadURL(storageRef);
+        try {
+          const ext = logoFile.name.split('.').pop() || 'png';
+          const storageRef = ref(storage, `company/logo.${ext}`);
+          await withTimeout(uploadBytes(storageRef, logoFile, { contentType: logoFile.type }), 1000);
+          updates.companyLogo = await getDownloadURL(storageRef);
+        } catch {
+          // If storage offline, use local data url preview for immediate feedback
+          const reader = new FileReader();
+          reader.readAsDataURL(logoFile);
+          await new Promise<void>((resolve) => {
+            reader.onloadend = () => {
+              if (reader.result) updates.companyLogo = reader.result as string;
+              resolve();
+            };
+          });
+        }
       }
 
       // Upload QR if changed
       if (qrFile) {
-        const ext = qrFile.name.split('.').pop() || 'png';
-        const storageRef = ref(storage, `upi/qr.${ext}`);
-        await uploadBytes(storageRef, qrFile, { contentType: qrFile.type });
-        updates.upiQrUrl = await getDownloadURL(storageRef);
+        try {
+          const ext = qrFile.name.split('.').pop() || 'png';
+          const storageRef = ref(storage, `upi/qr.${ext}`);
+          await withTimeout(uploadBytes(storageRef, qrFile, { contentType: qrFile.type }), 1000);
+          updates.upiQrUrl = await getDownloadURL(storageRef);
+        } catch {
+          const reader = new FileReader();
+          reader.readAsDataURL(qrFile);
+          await new Promise<void>((resolve) => {
+            reader.onloadend = () => {
+              if (reader.result) updates.upiQrUrl = reader.result as string;
+              resolve();
+            };
+          });
+        }
       }
 
       await updateCompanySettings(updates, userProfile.uid);

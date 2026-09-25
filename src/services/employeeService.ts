@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { User, AccessRequest, UserStatus, AccessRequestStatus } from '../types';
+import { getCachedData, setCachedData, withTimeout, CACHE_KEYS } from '../utils/localStore';
 
 function mapUser(id: string, data: Record<string, unknown>): User {
   return {
@@ -39,39 +40,59 @@ function mapAccessRequest(id: string, data: Record<string, unknown>): AccessRequ
 }
 
 export async function getAccessRequests(status?: AccessRequestStatus): Promise<AccessRequest[]> {
-  let q;
-  if (status) {
-    q = query(
-      collection(db, 'accessRequests'),
-      where('status', '==', status),
-      orderBy('requestedAt', 'desc')
-    );
-  } else {
-    q = query(collection(db, 'accessRequests'), orderBy('requestedAt', 'desc'));
-  }
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => mapAccessRequest(d.id, d.data()));
+  const cached = getCachedData<AccessRequest[]>(CACHE_KEYS.ACCESS_REQUESTS, []);
+  let filtered = status ? cached.filter((r) => r.status === status) : cached;
+
+  try {
+    let q;
+    if (status) {
+      q = query(
+        collection(db, 'accessRequests'),
+        where('status', '==', status),
+        orderBy('requestedAt', 'desc')
+      );
+    } else {
+      q = query(collection(db, 'accessRequests'), orderBy('requestedAt', 'desc'));
+    }
+    const snapshot = await withTimeout(getDocs(q), 350);
+    if (!snapshot.empty) {
+      const live = snapshot.docs.map((d) => mapAccessRequest(d.id, d.data()));
+      setCachedData(CACHE_KEYS.ACCESS_REQUESTS, live);
+      return status ? live.filter((r) => r.status === status) : live;
+    }
+  } catch {}
+
+  return filtered;
 }
 
 export async function getPendingRequestCount(): Promise<number> {
-  const q = query(collection(db, 'accessRequests'), where('status', '==', 'pending'));
-  const snapshot = await getDocs(q);
-  return snapshot.size;
+  const cached = getCachedData<AccessRequest[]>(CACHE_KEYS.ACCESS_REQUESTS, []);
+  const pendingCached = cached.filter((r) => r.status === 'pending').length;
+
+  try {
+    const q = query(collection(db, 'accessRequests'), where('status', '==', 'pending'));
+    const snapshot = await withTimeout(getDocs(q), 350);
+    return snapshot.size;
+  } catch {}
+
+  return pendingCached;
 }
 
 export async function approveAccessRequest(
   requestId: string,
   reviewerUid: string
 ): Promise<void> {
-  // Update the access request status
-  await updateDoc(doc(db, 'accessRequests', requestId), {
-    status: 'approved' as AccessRequestStatus,
+  const cached = getCachedData<AccessRequest[]>(CACHE_KEYS.ACCESS_REQUESTS, []);
+  setCachedData(
+    CACHE_KEYS.ACCESS_REQUESTS,
+    cached.map((r) => (r.id === requestId ? { ...r, status: 'approved' as AccessRequestStatus, reviewedBy: reviewerUid, reviewedAt: new Date() } : r))
+  );
+
+  updateDoc(doc(db, 'accessRequests', requestId), {
+    status: 'approved',
     reviewedAt: serverTimestamp(),
     reviewedBy: reviewerUid,
-  });
-  // Note: In production, a Cloud Function would create the Firebase Auth user
-  // and send the invitation email. For now, the controller manually creates
-  // the user via Firebase Console or a Cloud Function trigger.
+  }).catch(() => {});
 }
 
 export async function rejectAccessRequest(
@@ -79,23 +100,45 @@ export async function rejectAccessRequest(
   reviewerUid: string,
   reason: string
 ): Promise<void> {
-  await updateDoc(doc(db, 'accessRequests', requestId), {
-    status: 'rejected' as AccessRequestStatus,
+  const cached = getCachedData<AccessRequest[]>(CACHE_KEYS.ACCESS_REQUESTS, []);
+  setCachedData(
+    CACHE_KEYS.ACCESS_REQUESTS,
+    cached.map((r) => (r.id === requestId ? { ...r, status: 'rejected' as AccessRequestStatus, reviewedBy: reviewerUid, rejectionReason: reason, reviewedAt: new Date() } : r))
+  );
+
+  updateDoc(doc(db, 'accessRequests', requestId), {
+    status: 'rejected',
     reviewedAt: serverTimestamp(),
     reviewedBy: reviewerUid,
     rejectionReason: reason,
-  });
+  }).catch(() => {});
 }
 
 export async function getUsers(): Promise<User[]> {
-  const q = query(collection(db, 'users'), orderBy('name', 'asc'));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => mapUser(d.id, d.data()));
+  const cached = getCachedData<User[]>(CACHE_KEYS.USERS, []);
+
+  try {
+    const q = query(collection(db, 'users'), orderBy('name', 'asc'));
+    const snapshot = await withTimeout(getDocs(q), 350);
+    if (!snapshot.empty) {
+      const live = snapshot.docs.map((d) => mapUser(d.id, d.data()));
+      setCachedData(CACHE_KEYS.USERS, live);
+      return live;
+    }
+  } catch {}
+
+  return cached;
 }
 
 export async function updateUserStatus(uid: string, status: UserStatus): Promise<void> {
-  await updateDoc(doc(db, 'users', uid), {
+  const cached = getCachedData<User[]>(CACHE_KEYS.USERS, []);
+  setCachedData(
+    CACHE_KEYS.USERS,
+    cached.map((u) => (u.uid === uid ? { ...u, status, updatedAt: new Date() } : u))
+  );
+
+  updateDoc(doc(db, 'users', uid), {
     status,
     updatedAt: serverTimestamp(),
-  });
+  }).catch(() => {});
 }

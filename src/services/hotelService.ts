@@ -49,7 +49,7 @@ export async function getHotels(activeOnly: boolean = false): Promise<Hotel[]> {
     } else {
       q = query(collection(db, 'hotels'), orderBy('hotelName', 'asc'));
     }
-    const snapshot = await withTimeout(getDocs(q), 600);
+    const snapshot = await withTimeout(getDocs(q), 350);
     if (!snapshot.empty) {
       const live = snapshot.docs.map((d) => mapHotel(d.id, d.data()));
       setCachedData(CACHE_KEYS.HOTELS, live);
@@ -68,7 +68,7 @@ export async function getHotel(id: string): Promise<Hotel | null> {
   if (found) return found;
 
   try {
-    const snap = await withTimeout(getDoc(doc(db, 'hotels', id)), 600);
+    const snap = await withTimeout(getDoc(doc(db, 'hotels', id)), 350);
     if (snap.exists()) return mapHotel(snap.id, snap.data());
   } catch {
     // Ignore timeout

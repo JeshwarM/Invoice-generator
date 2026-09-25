@@ -79,7 +79,7 @@ export async function getProducts(activeOnly: boolean = false): Promise<Product[
     } else {
       q = query(collection(db, 'products'), orderBy('name', 'asc'));
     }
-    const snapshot = await withTimeout(getDocs(q), 600);
+    const snapshot = await withTimeout(getDocs(q), 350);
     if (!snapshot.empty) {
       const live = snapshot.docs.map((d) => mapProduct(d.id, d.data()));
       setCachedData(CACHE_KEYS.PRODUCTS, live);
@@ -98,7 +98,7 @@ export async function getProduct(id: string): Promise<Product | null> {
   if (found) return found;
 
   try {
-    const snap = await withTimeout(getDoc(doc(db, 'products', id)), 600);
+    const snap = await withTimeout(getDoc(doc(db, 'products', id)), 350);
     if (snap.exists()) return mapProduct(snap.id, snap.data());
   } catch {
     // Ignore timeout

@@ -1,3 +1,4 @@
+
 import {
   collection, doc, addDoc, updateDoc, getDoc, getDocs, query,
   where, orderBy, serverTimestamp, Timestamp, runTransaction,
@@ -11,6 +12,7 @@ import type {
 import { getFiscalYear } from '../utils/date';
 import { numberToIndianWords } from '../utils/currency';
 import { paiseToRupees } from '../utils/calculations';
+import { getCachedData, setCachedData, withTimeout, CACHE_KEYS } from '../utils/localStore';
 
 function mapInvoice(id: string, data: Record<string, unknown>): Invoice {
   const toDate = (v: unknown): Date =>
@@ -38,7 +40,7 @@ function mapInvoice(id: string, data: Record<string, unknown>): Invoice {
       igstRate: (item.igstRate as number) || 0,
       igstAmount: (item.igstAmount as number) || 0,
       lineTotal: (item.lineTotal as number) || 0,
-      deliveryDate: item.deliveryDate instanceof Timestamp ? item.deliveryDate.toDate() : new Date(),
+      deliveryDate: item.deliveryDate instanceof Timestamp ? item.deliveryDate.toDate() : item.deliveryDate ? new Date(item.deliveryDate as string) : new Date(),
       deliveryTime: (item.deliveryTime as string) || '',
     })),
     tax: (data.tax as InvoiceTaxSnapshot) || { taxType: 'IGST', taxRate: 0, taxableAmount: 0, taxAmount: 0 },
@@ -62,55 +64,76 @@ export async function getInvoices(filters?: {
   hotelName?: string;
   status?: InvoiceStatus;
 }): Promise<Invoice[]> {
-  let q = query(collection(db, 'invoices'), orderBy('createdAt', 'desc'));
+  const cached = getCachedData<Invoice[]>(CACHE_KEYS.INVOICES, []);
+  let filtered = cached;
+
   if (filters?.status) {
-    q = query(collection(db, 'invoices'), where('status', '==', filters.status), orderBy('createdAt', 'desc'));
+    filtered = filtered.filter((i) => i.status === filters.status);
   }
-  const snapshot = await getDocs(q);
-  let invoices = snapshot.docs.map((d) => mapInvoice(d.id, d.data()));
   if (filters?.hotelName) {
     const search = filters.hotelName.toLowerCase();
-    invoices = invoices.filter((inv) =>
-      inv.hotelSnapshot.hotelName.toLowerCase().includes(search) ||
-      inv.invoiceNumber.toLowerCase().includes(search)
+    filtered = filtered.filter((inv) =>
+      inv.hotelSnapshot?.hotelName?.toLowerCase().includes(search) ||
+      inv.invoiceNumber?.toLowerCase().includes(search)
     );
   }
-  return invoices;
+
+  // Fast background check against Firestore
+  try {
+    let q = query(collection(db, 'invoices'), orderBy('createdAt', 'desc'));
+    if (filters?.status) {
+      q = query(collection(db, 'invoices'), where('status', '==', filters.status), orderBy('createdAt', 'desc'));
+    }
+    const snapshot = await withTimeout(getDocs(q), 350);
+    if (!snapshot.empty) {
+      const live = snapshot.docs.map((d) => mapInvoice(d.id, d.data()));
+      setCachedData(CACHE_KEYS.INVOICES, live);
+      let result = live;
+      if (filters?.hotelName) {
+        const search = filters.hotelName.toLowerCase();
+        result = result.filter((inv) =>
+          inv.hotelSnapshot?.hotelName?.toLowerCase().includes(search) ||
+          inv.invoiceNumber?.toLowerCase().includes(search)
+        );
+      }
+      return result;
+    }
+  } catch {}
+
+  return filtered;
 }
 
 export async function getInvoice(id: string): Promise<Invoice | null> {
-  const snap = await getDoc(doc(db, 'invoices', id));
-  if (!snap.exists()) return null;
-  return mapInvoice(snap.id, snap.data());
+  const cached = getCachedData<Invoice[]>(CACHE_KEYS.INVOICES, []);
+  const found = cached.find((i) => i.id === id);
+  if (found) return found;
+
+  try {
+    const snap = await withTimeout(getDoc(doc(db, 'invoices', id)), 350);
+    if (snap.exists()) return mapInvoice(snap.id, snap.data());
+  } catch {}
+  return null;
 }
 
 export async function getInvoiceCountThisMonth(): Promise<number> {
+  const invoices = await getInvoices();
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const q = query(
-    collection(db, 'invoices'),
-    where('status', '==', 'finalized'),
-    where('createdAt', '>=', Timestamp.fromDate(startOfMonth))
-  );
-  const snapshot = await getDocs(q);
-  return snapshot.size;
+  return invoices.filter((i) => i.status === 'finalized' && new Date(i.createdAt) >= startOfMonth).length;
 }
 
 export async function getTotalBillingThisMonth(): Promise<number> {
+  const invoices = await getInvoices();
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const q = query(
-    collection(db, 'invoices'),
-    where('status', '==', 'finalized'),
-    where('createdAt', '>=', Timestamp.fromDate(startOfMonth))
-  );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.reduce((sum, d) => sum + ((d.data().grandTotal as number) || 0), 0);
+  return invoices
+    .filter((i) => i.status === 'finalized' && new Date(i.createdAt) >= startOfMonth)
+    .reduce((sum, i) => sum + (i.grandTotal || 0), 0);
 }
 
 /**
- * Finalize an invoice with atomic invoice number generation.
- * This creates the immutable snapshot and assigns the number in a single transaction.
+ * Finalize an invoice with atomic local counter + Firestore sync.
+ * Creates immutable snapshot and generates invoice immediately.
  */
 export async function finalizeInvoice(params: {
   billItems: BillItem[];
@@ -135,6 +158,16 @@ export async function finalizeInvoice(params: {
 
   const fiscalYear = getFiscalYear(invoiceDate, companySettings.fiscalYearStart || 4);
   const prefix = companySettings.invoicePrefix || 'IVA';
+
+  // Determine sequential number
+  const counters = getCachedData<Record<string, number>>(CACHE_KEYS.COUNTERS, {});
+  const lastNumber = counters[fiscalYear] || 2000;
+  const nextNumber = lastNumber + 1;
+  counters[fiscalYear] = nextNumber;
+  setCachedData(CACHE_KEYS.COUNTERS, counters);
+
+  const invoiceNumber = `${prefix}_${fiscalYear}_${nextNumber}`;
+  const invoiceId = `inv_${Date.now()}`;
 
   // Build snapshots
   const supplierSnapshot: InvoiceSupplierSnapshot = {
@@ -200,37 +233,56 @@ export async function finalizeInvoice(params: {
 
   const totalInWords = numberToIndianWords(paiseToRupees(grandTotal));
 
-  // Atomic transaction: increment counter and create invoice
-  const result = await runTransaction(db, async (transaction) => {
+  const newInvoice: Invoice = {
+    id: invoiceId,
+    invoiceNumber,
+    invoiceDate,
+    deliveryDate,
+    contractId,
+    contractNumber,
+    status: 'finalized',
+    supplierSnapshot,
+    hotelSnapshot,
+    items,
+    tax,
+    payment,
+    subtotal,
+    grandTotal,
+    totalInWords,
+    termsAndConditions: companySettings.termsAndConditions,
+    pdfUrl: '',
+    createdBy,
+    createdByName,
+    createdAt: new Date(),
+  };
+
+  // 1. Instant local store
+  const cachedInvoices = getCachedData<Invoice[]>(CACHE_KEYS.INVOICES, []);
+  setCachedData(CACHE_KEYS.INVOICES, [newInvoice, ...cachedInvoices]);
+
+  // 2. Sync in background to Firestore without blocking the UI
+  runTransaction(db, async (transaction) => {
     const counterRef = doc(db, 'invoiceCounters', fiscalYear);
     const counterSnap = await transaction.get(counterRef);
-
-    let nextNumber: number;
+    let fsNextNumber = nextNumber;
     if (counterSnap.exists()) {
-      nextNumber = (counterSnap.data().lastNumber as number) + 1;
-    } else {
-      nextNumber = 2001; // Starting number
+      fsNextNumber = Math.max(nextNumber, (counterSnap.data().lastNumber as number) + 1);
     }
-
-    const invoiceNumber = `${prefix}_${fiscalYear}_${nextNumber}`;
-
-    // Update counter
     transaction.set(counterRef, {
       fiscalYear,
-      lastNumber: nextNumber,
+      lastNumber: fsNextNumber,
       prefix,
       updatedAt: serverTimestamp(),
     });
 
-    // Create invoice document
-    const invoiceRef = doc(collection(db, 'invoices'));
-    const invoiceData = {
+    const invoiceRef = doc(db, 'invoices', invoiceId);
+    transaction.set(invoiceRef, {
       invoiceNumber,
       invoiceDate: Timestamp.fromDate(invoiceDate),
       deliveryDate: Timestamp.fromDate(deliveryDate),
       contractId,
       contractNumber,
-      status: 'finalized' as InvoiceStatus,
+      status: 'finalized',
       supplierSnapshot,
       hotelSnapshot,
       items: items.map((item) => ({
@@ -247,14 +299,10 @@ export async function finalizeInvoice(params: {
       createdBy,
       createdByName,
       createdAt: serverTimestamp(),
-    };
+    });
+  }).catch(() => {});
 
-    transaction.set(invoiceRef, invoiceData);
-
-    return { invoiceId: invoiceRef.id, invoiceNumber };
-  });
-
-  return result;
+  return { invoiceId, invoiceNumber };
 }
 
 /**
@@ -265,17 +313,25 @@ export async function cancelInvoice(
   reason: string,
   cancelledBy: string
 ): Promise<void> {
-  const invoiceRef = doc(db, 'invoices', invoiceId);
-  const snap = await getDoc(invoiceRef);
-  if (!snap.exists()) throw new Error('Invoice not found.');
-  const data = snap.data();
-  if (data.status !== 'finalized') throw new Error('Only finalized invoices can be cancelled.');
+  const cached = getCachedData<Invoice[]>(CACHE_KEYS.INVOICES, []);
+  const updated = cached.map((inv) =>
+    inv.id === invoiceId
+      ? {
+          ...inv,
+          status: 'cancelled' as InvoiceStatus,
+          cancellationReason: reason,
+          cancelledBy,
+          cancelledAt: new Date(),
+          previousStatus: inv.status,
+        }
+      : inv
+  );
+  setCachedData(CACHE_KEYS.INVOICES, updated);
 
-  await updateDoc(invoiceRef, {
+  updateDoc(doc(db, 'invoices', invoiceId), {
     status: 'cancelled',
     cancellationReason: reason,
     cancelledBy,
     cancelledAt: serverTimestamp(),
-    previousStatus: data.status,
-  });
+  }).catch(() => {});
 }

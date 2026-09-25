@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { DraftBill, BillItem } from '../types';
+import { getCachedData, setCachedData, withTimeout, CACHE_KEYS } from '../utils/localStore';
 
 function serializeBillItems(items: BillItem[]): Record<string, unknown>[] {
   return items.map((item) => ({
@@ -40,7 +41,7 @@ function deserializeBillItems(items: Record<string, unknown>[]): BillItem[] {
     igstRate: (item.igstRate as number) || 0,
     igstAmount: (item.igstAmount as number) || 0,
     lineTotal: (item.lineTotal as number) || 0,
-    deliveryDate: item.deliveryDate instanceof Timestamp ? item.deliveryDate.toDate() : new Date(),
+    deliveryDate: item.deliveryDate instanceof Timestamp ? item.deliveryDate.toDate() : item.deliveryDate ? new Date(item.deliveryDate as string) : new Date(),
     deliveryTime: (item.deliveryTime as string) || '',
   }));
 }
@@ -52,35 +53,52 @@ function mapDraft(id: string, data: Record<string, unknown>): DraftBill {
     hotelName: (data.hotelName as string) || '',
     contractId: (data.contractId as string) || '',
     contractNumber: (data.contractNumber as string) || '',
-    deliveryDate: data.deliveryDate instanceof Timestamp ? data.deliveryDate.toDate() : new Date(),
-    invoiceDate: data.invoiceDate instanceof Timestamp ? data.invoiceDate.toDate() : new Date(),
+    deliveryDate: data.deliveryDate instanceof Timestamp ? data.deliveryDate.toDate() : data.deliveryDate ? new Date(data.deliveryDate as string) : new Date(),
+    invoiceDate: data.invoiceDate instanceof Timestamp ? data.invoiceDate.toDate() : data.invoiceDate ? new Date(data.invoiceDate as string) : new Date(),
     items: deserializeBillItems((data.items as Record<string, unknown>[]) || []),
     subtotal: (data.subtotal as number) || 0,
     igstTotal: (data.igstTotal as number) || 0,
     grandTotal: (data.grandTotal as number) || 0,
     status: (data.status as DraftBill['status']) || 'draft',
     createdBy: (data.createdBy as string) || '',
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(),
+    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt as string) : new Date(),
+    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt ? new Date(data.updatedAt as string) : new Date(),
     version: (data.version as number) || 1,
   };
 }
 
 export async function getDrafts(userId?: string): Promise<DraftBill[]> {
-  let q;
-  if (userId) {
-    q = query(collection(db, 'draftBills'), where('createdBy', '==', userId), orderBy('updatedAt', 'desc'));
-  } else {
-    q = query(collection(db, 'draftBills'), orderBy('updatedAt', 'desc'));
-  }
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => mapDraft(d.id, d.data()));
+  const cached = getCachedData<DraftBill[]>(CACHE_KEYS.DRAFTS, []);
+  let filtered = userId ? cached.filter((d) => d.createdBy === userId) : cached;
+
+  try {
+    let q;
+    if (userId) {
+      q = query(collection(db, 'draftBills'), where('createdBy', '==', userId), orderBy('updatedAt', 'desc'));
+    } else {
+      q = query(collection(db, 'draftBills'), orderBy('updatedAt', 'desc'));
+    }
+    const snapshot = await withTimeout(getDocs(q), 350);
+    if (!snapshot.empty) {
+      const live = snapshot.docs.map((d) => mapDraft(d.id, d.data()));
+      setCachedData(CACHE_KEYS.DRAFTS, live);
+      return userId ? live.filter((d) => d.createdBy === userId) : live;
+    }
+  } catch {}
+
+  return filtered;
 }
 
 export async function getDraft(id: string): Promise<DraftBill | null> {
-  const snap = await getDoc(doc(db, 'draftBills', id));
-  if (!snap.exists()) return null;
-  return mapDraft(snap.id, snap.data());
+  const cached = getCachedData<DraftBill[]>(CACHE_KEYS.DRAFTS, []);
+  const found = cached.find((d) => d.id === id);
+  if (found) return found;
+
+  try {
+    const snap = await withTimeout(getDoc(doc(db, 'draftBills', id)), 350);
+    if (snap.exists()) return mapDraft(snap.id, snap.data());
+  } catch {}
+  return null;
 }
 
 export async function saveDraft(
@@ -98,7 +116,32 @@ export async function saveDraft(
   },
   createdBy: string
 ): Promise<string> {
-  const docRef = await addDoc(collection(db, 'draftBills'), {
+  const draftId = `draft_${Date.now()}`;
+  const newDraft: DraftBill = {
+    id: draftId,
+    hotelId: data.hotelId,
+    hotelName: data.hotelName,
+    contractId: data.contractId,
+    contractNumber: data.contractNumber,
+    deliveryDate: data.deliveryDate,
+    invoiceDate: data.invoiceDate,
+    items: data.items,
+    subtotal: data.subtotal,
+    igstTotal: data.igstTotal,
+    grandTotal: data.grandTotal,
+    status: 'draft',
+    createdBy,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    version: 1,
+  };
+
+  // Instant local store
+  const cached = getCachedData<DraftBill[]>(CACHE_KEYS.DRAFTS, []);
+  setCachedData(CACHE_KEYS.DRAFTS, [newDraft, ...cached]);
+
+  // Sync to Firestore in background
+  addDoc(collection(db, 'draftBills'), {
     hotelId: data.hotelId,
     hotelName: data.hotelName,
     contractId: data.contractId,
@@ -114,8 +157,9 @@ export async function saveDraft(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     version: 1,
-  });
-  return docRef.id;
+  }).catch(() => {});
+
+  return draftId;
 }
 
 export async function updateDraft(
@@ -130,6 +174,19 @@ export async function updateDraft(
   }>,
   currentVersion: number
 ): Promise<void> {
+  const cached = getCachedData<DraftBill[]>(CACHE_KEYS.DRAFTS, []);
+  const updated = cached.map((d) =>
+    d.id === id
+      ? {
+          ...d,
+          ...data,
+          updatedAt: new Date(),
+          version: currentVersion + 1,
+        }
+      : d
+  );
+  setCachedData(CACHE_KEYS.DRAFTS, updated);
+
   const updateData: Record<string, unknown> = { updatedAt: serverTimestamp(), version: currentVersion + 1 };
   if (data.items) updateData.items = serializeBillItems(data.items);
   if (data.deliveryDate) updateData.deliveryDate = Timestamp.fromDate(data.deliveryDate);
@@ -138,9 +195,12 @@ export async function updateDraft(
   if (data.igstTotal !== undefined) updateData.igstTotal = data.igstTotal;
   if (data.grandTotal !== undefined) updateData.grandTotal = data.grandTotal;
 
-  await updateDoc(doc(db, 'draftBills', id), updateData);
+  updateDoc(doc(db, 'draftBills', id), updateData).catch(() => {});
 }
 
 export async function deleteDraft(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'draftBills', id));
+  const cached = getCachedData<DraftBill[]>(CACHE_KEYS.DRAFTS, []);
+  setCachedData(CACHE_KEYS.DRAFTS, cached.filter((d) => d.id !== id));
+
+  deleteDoc(doc(db, 'draftBills', id)).catch(() => {});
 }

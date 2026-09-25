@@ -45,7 +45,7 @@ export async function getCompanySettings(): Promise<CompanySettings> {
 
   try {
     const docRef = doc(db, 'companySettings', SETTINGS_DOC);
-    const snap = await withTimeout(getDoc(docRef), 600);
+    const snap = await withTimeout(getDoc(docRef), 350);
     if (snap.exists()) {
       const data = snap.data();
       const live = {

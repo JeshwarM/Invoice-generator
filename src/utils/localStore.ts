@@ -11,6 +11,10 @@ const CACHE_KEYS = {
   INVOICES: 'agrobill_cache_invoices',
   DRAFTS: 'agrobill_cache_drafts',
   SETTINGS: 'agrobill_cache_settings',
+  AUDIT_LOGS: 'agrobill_cache_audit_logs',
+  USERS: 'agrobill_cache_users',
+  ACCESS_REQUESTS: 'agrobill_cache_access_requests',
+  COUNTERS: 'agrobill_cache_counters',
 } as const;
 
 export function getCachedData<T>(key: string, defaultValue: T): T {
@@ -35,7 +39,7 @@ export function setCachedData<T>(key: string, value: T): void {
  * Race a promise against a fast timeout (default 800ms)
  * to prevent slow Firestore queries from blocking UI rendering.
  */
-export async function withTimeout<T>(promise: Promise<T>, timeoutMs = 800): Promise<T> {
+export async function withTimeout<T>(promise: Promise<T>, timeoutMs = 350): Promise<T> {
   let timeoutHandle: any;
   const timeoutPromise = new Promise<T>((_, reject) => {
     timeoutHandle = setTimeout(() => {
