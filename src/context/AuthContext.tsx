@@ -135,6 +135,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('This email is not authorized for direct Controller setup. Please submit a request via "Request Access" to be approved as an employee.');
       }
 
+      // Store in local accounts registry for persistent offline/local verification
+      try {
+        const raw = localStorage.getItem('agrobill_accounts');
+        const accounts = raw ? JSON.parse(raw) : [];
+        const filtered = accounts.filter((a: { email: string }) => a.email.toLowerCase() !== cleanEmail);
+        filtered.push({ email: cleanEmail, password, name: name.trim(), role: 'controller' });
+        localStorage.setItem('agrobill_accounts', JSON.stringify(filtered));
+      } catch {}
+
       try {
         const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
         try {
@@ -172,11 +181,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (authErr) {
         const msg = authErr instanceof Error ? authErr.message : '';
         if (msg.includes('api-key-not-valid') || msg.includes('api-key') || msg.includes('invalid-api-key') || msg.includes('network')) {
-          loginAsDemo('controller', cleanEmail, name.trim());
+          // Local verification mode
+          const localProfile: User = {
+            uid: 'uid_' + cleanEmail,
+            name: name.trim(),
+            email: cleanEmail,
+            role: 'controller',
+            status: 'active',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            lastLoginAt: new Date(),
+          };
+          setUserProfile(localProfile);
+          localStorage.setItem('agrobill_demo_user', JSON.stringify(localProfile));
           return;
         }
         if (msg.includes('auth/email-already-in-use')) {
-          throw new Error('This email is already registered. Please go to Login and sign in with your password.');
+          throw new Error('This email is already registered. Please sign in with your password.');
         } else if (msg.includes('auth/weak-password')) {
           throw new Error('Password should be at least 6 characters.');
         }
@@ -189,7 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [loginAsDemo]);
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     setError(null);
@@ -198,71 +219,94 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const lowerEmail = email.toLowerCase().trim();
       const isDesignated = isDesignatedControllerEmail(lowerEmail);
 
-      if (lowerEmail.includes('controller') || lowerEmail.includes('admin') || isDesignated) {
-        loginAsDemo('controller', lowerEmail, isDesignated ? 'Administrator' : undefined);
-        return;
-      }
-      if (lowerEmail.includes('employee') || lowerEmail.includes('staff')) {
-        loginAsDemo('employee', lowerEmail);
-        return;
-      }
-
-      const result = await signInWithEmailAndPassword(auth, email, password);
-      let profile = await fetchUserProfile(result.user.uid);
-      if (!profile) {
-        if (isDesignated) {
-          // Auto-seed profile for designated controller if missing
-          const newCtrl: User = {
-            uid: result.user.uid,
-            name: result.user.displayName || 'Administrator',
-            email: lowerEmail,
-            role: 'controller',
-            status: 'active',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            lastLoginAt: new Date(),
-          };
-          try {
-            await setDoc(doc(db, 'users', result.user.uid), {
-              ...newCtrl,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-              lastLoginAt: serverTimestamp(),
-            });
-          } catch {}
-          profile = newCtrl;
-        } else {
-          await signOut(auth);
-          throw new Error('Account not found. Please contact the administrator.');
+      // Attempt live Firebase Authentication
+      try {
+        const result = await signInWithEmailAndPassword(auth, email, password);
+        let profile = await fetchUserProfile(result.user.uid);
+        if (!profile) {
+          if (isDesignated) {
+            const newCtrl: User = {
+              uid: result.user.uid,
+              name: result.user.displayName || 'Administrator',
+              email: lowerEmail,
+              role: 'controller',
+              status: 'active',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              lastLoginAt: new Date(),
+            };
+            try {
+              await setDoc(doc(db, 'users', result.user.uid), {
+                ...newCtrl,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+                lastLoginAt: serverTimestamp(),
+              });
+            } catch {}
+            profile = newCtrl;
+          } else {
+            await signOut(auth);
+            throw new Error('Account not found. Please contact the administrator.');
+          }
         }
+        if (profile.status !== 'active') {
+          await signOut(auth);
+          throw new Error('Your account is not active. Please contact the administrator.');
+        }
+        setUserProfile(profile);
+      } catch (authErr) {
+        const message = authErr instanceof Error ? authErr.message : '';
+        // If Firebase project API key is not configured locally, verify against registered accounts
+        if (message.includes('api-key-not-valid') || message.includes('api-key') || message.includes('invalid-api-key') || message.includes('network')) {
+          const raw = localStorage.getItem('agrobill_accounts');
+          const accounts: Array<{ email: string; password: string; name: string; role: UserRole }> = raw ? JSON.parse(raw) : [];
+          const matching = accounts.find((a) => a.email.toLowerCase() === lowerEmail);
+
+          if (matching) {
+            if (matching.password !== password) {
+              const errText = 'Invalid password. Please check your credentials.';
+              setError(errText);
+              throw new Error(errText);
+            }
+            const profile: User = {
+              uid: 'uid_' + matching.email,
+              name: matching.name,
+              email: matching.email,
+              role: matching.role,
+              status: 'active',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              lastLoginAt: new Date(),
+            };
+            setUserProfile(profile);
+            localStorage.setItem('agrobill_demo_user', JSON.stringify(profile));
+            return;
+          }
+
+          if (isDesignated) {
+            const errText = 'Your Controller account has not been set up with a password yet. Please click "Set up Controller Account" below to create your password.';
+            setError(errText);
+            throw new Error(errText);
+          }
+
+          const errText = 'Invalid email or password.';
+          setError(errText);
+          throw new Error(errText);
+        }
+
+        if (message.includes('auth/invalid-credential') || message.includes('auth/wrong-password') || message.includes('auth/user-not-found')) {
+          setError('Invalid email or password.');
+        } else if (message.includes('auth/too-many-requests')) {
+          setError('Too many failed attempts. Please try again later.');
+        } else {
+          setError(message || 'Login failed.');
+        }
+        throw authErr;
       }
-      if (profile.status !== 'active') {
-        await signOut(auth);
-        throw new Error('Your account is not active. Please contact the administrator.');
-      }
-      setUserProfile(profile);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
-      // Fallback gracefully if API key is not configured for local dev
-      if (message.includes('api-key-not-valid') || message.includes('api-key') || message.includes('invalid-api-key')) {
-        const isCtrl = isDesignatedControllerEmail(email) || !email.toLowerCase().includes('employee');
-        loginAsDemo(isCtrl ? 'controller' : 'employee', email);
-        return;
-      }
-      if (message.includes('auth/invalid-credential') || message.includes('auth/wrong-password') || message.includes('auth/user-not-found')) {
-        setError('Invalid email or password.');
-      } else if (message.includes('auth/too-many-requests')) {
-        setError('Too many failed attempts. Please try again later.');
-      } else if (message.includes('auth/network-request-failed')) {
-        setError('Network error. Please check your connection.');
-      } else {
-        setError(message);
-      }
-      throw err;
     } finally {
       setLoading(false);
     }
-  }, [fetchUserProfile, loginAsDemo]);
+  }, [fetchUserProfile]);
 
   const logout = useCallback(async () => {
     try {

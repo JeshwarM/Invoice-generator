@@ -25,25 +25,18 @@ const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const { login, loginAsDemo, error, clearError } = useAuth();
-
-  const handleQuickLogin = (role: 'controller' | 'employee') => {
-    loginAsDemo(role);
-    navigate('/dashboard');
-  };
+  const { login, error, clearError } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
     setSubmitting(true);
+    clearError();
     try {
       await login(email, password);
       navigate('/dashboard');
     } catch {
-      // In local mode without live Firebase, auto-login seamlessly
-      const isEmp = email.toLowerCase().includes('employee') || email.toLowerCase().includes('staff');
-      loginAsDemo(isEmp ? 'employee' : 'controller');
-      navigate('/dashboard');
+      // The error is captured in AuthContext and rendered in the CAlert
     } finally {
       setSubmitting(false);
     }
@@ -115,21 +108,7 @@ const LoginPage: React.FC = () => {
                       </CCol>
                     </CRow>
 
-                    <hr className="my-4" />
-
-                    <div className="p-3 bg-light rounded text-center mb-3">
-                      <div className="small fw-semibold text-uppercase text-body-secondary mb-2">Local Development Quick Access</div>
-                      <div className="d-flex gap-2 justify-content-center">
-                        <CButton color="success" size="sm" type="button" onClick={() => handleQuickLogin('controller')}>
-                          Login as Controller
-                        </CButton>
-                        <CButton color="info" size="sm" type="button" onClick={() => handleQuickLogin('employee')}>
-                          Login as Employee
-                        </CButton>
-                      </div>
-                    </div>
-
-                    <div className="text-center">
+                    <div className="text-center mt-4 pt-3 border-top">
                       <p className="text-body-secondary mb-2">Billing Staff / Employee?</p>
                       <Link to="/request-access">
                         <CButton color="outline-primary" size="sm" className="px-3 mb-3">Request Employee Access</CButton>
