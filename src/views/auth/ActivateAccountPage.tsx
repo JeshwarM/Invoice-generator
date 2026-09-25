@@ -70,10 +70,12 @@ const ActivateAccountPage: React.FC = () => {
           <CCol md={8} lg={6} xl={5}>
             <CCard className="p-4 shadow-sm border-0">
               <CCardBody>
-                <div className="text-center mb-3">
-                  <IronvalleyLogo size={56} />
-                  <h3 className="mt-2 mb-1 fw-bold" style={{ color: '#432874' }}>AgroBill</h3>
-                  <div className="d-flex justify-content-center align-items-center gap-1">
+                <div className="text-center mb-4">
+                  <div className="d-flex justify-content-center mb-3">
+                    <IronvalleyLogo size={70} />
+                  </div>
+                  <h3 className="mb-1 fw-bold" style={{ color: '#432874' }}>AgroBill</h3>
+                  <div className="d-flex justify-content-center align-items-center gap-1 mt-2">
                     <CIcon icon={cilCheckCircle} className="text-success" />
                     <CBadge color="success" className="px-2 py-1">
                       Staff Account Activation

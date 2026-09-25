@@ -92,9 +92,11 @@ const RequestAccessPage: React.FC = () => {
           <CCol md={8} lg={6} xl={5}>
             <CCard className="p-4 shadow-sm border-0">
               <CCardBody>
-                <div className="text-center mb-3">
-                  <IronvalleyLogo size={56} />
-                  <h2 className="mt-2 mb-1 fw-bold" style={{ color: '#432874' }}>AgroBill</h2>
+                <div className="text-center mb-4">
+                  <div className="d-flex justify-content-center mb-3">
+                    <IronvalleyLogo size={70} />
+                  </div>
+                  <h2 className="mb-1 fw-bold" style={{ color: '#432874' }}>AgroBill</h2>
                   <p className="text-body-secondary small mb-3">Staff Access Request</p>
                 </div>
 

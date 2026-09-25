@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const IRONVALLEY_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 160" width="105" height="120">
+export const IRONVALLEY_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 160" width="100%" height="100%" style="display:block;">
   <!-- Outer Gold Border -->
   <rect x="3" y="3" width="134" height="154" rx="8" ry="8" fill="#ffffff" stroke="#c9a832" stroke-width="3.5"/>
   <rect x="7" y="7" width="126" height="146" rx="6" ry="6" fill="#ffffff" stroke="#2e8540" stroke-width="1.5"/>
@@ -48,12 +48,19 @@ export const IronvalleyLogo: React.FC<{
   className = '',
 }) => {
   const finalWidth = size || width || 95;
-  const finalHeight = size ? Math.round(size * 1.15) : (height || 110);
+  const finalHeight = size ? Math.round(size * (160 / 140)) : (height || Math.round(finalWidth * (160 / 140)));
 
   return (
     <div
       className={className}
-      style={{ display: 'inline-block', width: finalWidth, height: finalHeight }}
+      style={{
+        display: 'inline-flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: finalWidth,
+        height: finalHeight,
+        overflow: 'hidden',
+      }}
       dangerouslySetInnerHTML={{ __html: IRONVALLEY_LOGO_SVG }}
     />
   );
