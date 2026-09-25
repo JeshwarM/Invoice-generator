@@ -22,7 +22,7 @@ const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const { login, error, clearError } = useAuth();
+  const { login, loginAsDemo, error, clearError } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +101,18 @@ const LoginPage: React.FC = () => {
                     </CRow>
 
                     <hr className="my-4" />
+
+                    <div className="p-3 bg-light rounded text-center mb-3">
+                      <div className="small fw-semibold text-uppercase text-body-secondary mb-2">Local Development Quick Access</div>
+                      <div className="d-flex gap-2 justify-content-center">
+                        <CButton color="success" size="sm" type="button" onClick={() => loginAsDemo('controller')}>
+                          Login as Controller
+                        </CButton>
+                        <CButton color="info" size="sm" type="button" onClick={() => loginAsDemo('employee')}>
+                          Login as Employee
+                        </CButton>
+                      </div>
+                    </div>
 
                     <div className="text-center">
                       <p className="text-body-secondary mb-2">Don&apos;t have an account?</p>

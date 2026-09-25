@@ -16,6 +16,7 @@ interface AuthContextType {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
+  loginAsDemo: (role?: UserRole) => void;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   isController: boolean;
@@ -88,7 +89,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await signOut(auth);
         }
       } else {
-        setUserProfile(null);
+        const savedDemo = localStorage.getItem('agrobill_demo_user');
+        if (savedDemo) {
+          try {
+            setUserProfile(JSON.parse(savedDemo));
+          } catch {
+            setUserProfile(null);
+          }
+        } else {
+          setUserProfile(null);
+        }
       }
       setLoading(false);
     });
@@ -128,13 +138,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchUserProfile]);
 
+  const loginAsDemo = useCallback((role: UserRole = 'controller') => {
+    const demoProfile: User = {
+      uid: role === 'controller' ? 'demo-controller-uid' : 'demo-employee-uid',
+      name: role === 'controller' ? 'Administrator (Controller)' : 'Billing Staff (Employee)',
+      email: role === 'controller' ? 'controller@agrobill.com' : 'employee@agrobill.com',
+      role,
+      status: 'active',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastLoginAt: new Date(),
+    };
+    setUserProfile(demoProfile);
+    localStorage.setItem('agrobill_demo_user', JSON.stringify(demoProfile));
+    setError(null);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
+      localStorage.removeItem('agrobill_demo_user');
       await signOut(auth);
       setUserProfile(null);
       setError(null);
     } catch (err) {
       console.error('Logout error:', err);
+      setUserProfile(null);
       setError('Failed to log out. Please try again.');
     }
   }, []);
@@ -172,6 +200,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     error,
     login,
+    loginAsDemo,
     logout,
     resetPassword,
     isController,
