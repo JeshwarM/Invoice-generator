@@ -36,15 +36,24 @@ export const IRONVALLEY_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" view
 
 export const IRONVALLEY_LOGO_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(IRONVALLEY_LOGO_SVG)}`;
 
-export const IronvalleyLogo: React.FC<{ width?: number; height?: number; className?: string }> = ({
-  width = 95,
-  height = 110,
+export const IronvalleyLogo: React.FC<{
+  width?: number;
+  height?: number;
+  size?: number;
+  className?: string;
+}> = ({
+  width,
+  height,
+  size,
   className = '',
 }) => {
+  const finalWidth = size || width || 95;
+  const finalHeight = size ? Math.round(size * 1.15) : (height || 110);
+
   return (
     <div
       className={className}
-      style={{ display: 'inline-block', width, height }}
+      style={{ display: 'inline-block', width: finalWidth, height: finalHeight }}
       dangerouslySetInnerHTML={{ __html: IRONVALLEY_LOGO_SVG }}
     />
   );

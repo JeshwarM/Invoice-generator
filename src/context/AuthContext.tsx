@@ -2,13 +2,16 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   signOut,
   sendPasswordResetEmail,
   User as FirebaseUser,
 } from 'firebase/auth';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import type { User, UserRole, UserStatus } from '../types';
+import { isDesignatedControllerEmail } from '../config/authConfig';
 
 interface AuthContextType {
   firebaseUser: FirebaseUser | null;
@@ -16,7 +19,8 @@ interface AuthContextType {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
-  loginAsDemo: (role?: UserRole) => void;
+  registerController: (name: string, email: string, password: string) => Promise<void>;
+  loginAsDemo: (role?: UserRole, customEmail?: string, customName?: string) => void;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   isController: boolean;
@@ -105,12 +109,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, [fetchUserProfile]);
 
-  const loginAsDemo = useCallback((role: UserRole = 'controller') => {
+  const loginAsDemo = useCallback((role: UserRole = 'controller', customEmail?: string, customName?: string) => {
+    const isCtrl = role === 'controller' || (customEmail ? isDesignatedControllerEmail(customEmail) : false);
     const demoProfile: User = {
-      uid: role === 'controller' ? 'demo-controller-uid' : 'demo-employee-uid',
-      name: role === 'controller' ? 'Administrator (Controller)' : 'Billing Staff (Employee)',
-      email: role === 'controller' ? 'controller@agrobill.com' : 'employee@agrobill.com',
-      role,
+      uid: isCtrl ? 'demo-controller-uid' : 'demo-employee-uid',
+      name: customName || (isCtrl ? 'Administrator (Controller)' : 'Billing Staff (Employee)'),
+      email: customEmail || (isCtrl ? 'controller@agrobill.com' : 'employee@agrobill.com'),
+      role: isCtrl ? 'controller' : role,
       status: 'active',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -121,25 +126,115 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
   }, []);
 
+  const registerController = useCallback(async (name: string, email: string, password: string) => {
+    setError(null);
+    setLoading(true);
+    try {
+      const cleanEmail = email.toLowerCase().trim();
+      if (!isDesignatedControllerEmail(cleanEmail)) {
+        throw new Error('This email is not authorized for direct Controller setup. Please submit a request via "Request Access" to be approved as an employee.');
+      }
+
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+        try {
+          await updateProfile(cred.user, { displayName: name.trim() });
+        } catch {}
+
+        const controllerProfile: User = {
+          uid: cred.user.uid,
+          name: name.trim(),
+          email: cleanEmail,
+          role: 'controller',
+          status: 'active',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lastLoginAt: new Date(),
+        };
+
+        try {
+          await setDoc(doc(db, 'users', cred.user.uid), {
+            uid: cred.user.uid,
+            name: name.trim(),
+            email: cleanEmail,
+            role: 'controller',
+            status: 'active',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            lastLoginAt: serverTimestamp(),
+          });
+        } catch (dbErr) {
+          console.warn('Could not write to firestore immediately:', dbErr);
+        }
+
+        setUserProfile(controllerProfile);
+        localStorage.setItem('agrobill_demo_user', JSON.stringify(controllerProfile));
+      } catch (authErr) {
+        const msg = authErr instanceof Error ? authErr.message : '';
+        if (msg.includes('api-key-not-valid') || msg.includes('api-key') || msg.includes('invalid-api-key') || msg.includes('network')) {
+          loginAsDemo('controller', cleanEmail, name.trim());
+          return;
+        }
+        if (msg.includes('auth/email-already-in-use')) {
+          throw new Error('This email is already registered. Please go to Login and sign in with your password.');
+        } else if (msg.includes('auth/weak-password')) {
+          throw new Error('Password should be at least 6 characters.');
+        }
+        throw authErr;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Registration failed.';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [loginAsDemo]);
+
   const login = useCallback(async (email: string, password: string) => {
     setError(null);
     setLoading(true);
     try {
       const lowerEmail = email.toLowerCase().trim();
-      if (lowerEmail.includes('controller') || lowerEmail.includes('admin')) {
-        loginAsDemo('controller');
+      const isDesignated = isDesignatedControllerEmail(lowerEmail);
+
+      if (lowerEmail.includes('controller') || lowerEmail.includes('admin') || isDesignated) {
+        loginAsDemo('controller', lowerEmail, isDesignated ? 'Administrator' : undefined);
         return;
       }
       if (lowerEmail.includes('employee') || lowerEmail.includes('staff')) {
-        loginAsDemo('employee');
+        loginAsDemo('employee', lowerEmail);
         return;
       }
 
       const result = await signInWithEmailAndPassword(auth, email, password);
-      const profile = await fetchUserProfile(result.user.uid);
+      let profile = await fetchUserProfile(result.user.uid);
       if (!profile) {
-        await signOut(auth);
-        throw new Error('Account not found. Please contact the administrator.');
+        if (isDesignated) {
+          // Auto-seed profile for designated controller if missing
+          const newCtrl: User = {
+            uid: result.user.uid,
+            name: result.user.displayName || 'Administrator',
+            email: lowerEmail,
+            role: 'controller',
+            status: 'active',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            lastLoginAt: new Date(),
+          };
+          try {
+            await setDoc(doc(db, 'users', result.user.uid), {
+              ...newCtrl,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+              lastLoginAt: serverTimestamp(),
+            });
+          } catch {}
+          profile = newCtrl;
+        } else {
+          await signOut(auth);
+          throw new Error('Account not found. Please contact the administrator.');
+        }
       }
       if (profile.status !== 'active') {
         await signOut(auth);
@@ -150,8 +245,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
       // Fallback gracefully if API key is not configured for local dev
       if (message.includes('api-key-not-valid') || message.includes('api-key') || message.includes('invalid-api-key')) {
-        const isEmp = email.toLowerCase().includes('employee') || email.toLowerCase().includes('staff');
-        loginAsDemo(isEmp ? 'employee' : 'controller');
+        const isCtrl = isDesignatedControllerEmail(email) || !email.toLowerCase().includes('employee');
+        loginAsDemo(isCtrl ? 'controller' : 'employee', email);
         return;
       }
       if (message.includes('auth/invalid-credential') || message.includes('auth/wrong-password') || message.includes('auth/user-not-found')) {
@@ -215,6 +310,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     error,
     login,
+    registerController,
     loginAsDemo,
     logout,
     resetPassword,

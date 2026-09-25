@@ -18,17 +18,21 @@ import { cilUser, cilEnvelopeClosed } from '@coreui/icons';
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { isValidEmail, isRequired } from '../../utils/validators';
+import { isDesignatedControllerEmail } from '../../config/authConfig';
+import IronvalleyLogo from '../../components/common/IronvalleyLogo';
 
 const RequestAccessPage: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isControllerNotice, setIsControllerNotice] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setIsControllerNotice(false);
 
     if (!isRequired(name)) {
       setError('Name is required.');
@@ -36,6 +40,11 @@ const RequestAccessPage: React.FC = () => {
     }
     if (!isRequired(email) || !isValidEmail(email)) {
       setError('A valid email address is required.');
+      return;
+    }
+
+    if (isDesignatedControllerEmail(email)) {
+      setIsControllerNotice(true);
       return;
     }
 
@@ -107,13 +116,28 @@ const RequestAccessPage: React.FC = () => {
       <CContainer>
         <CRow className="justify-content-center">
           <CCol md={8} lg={6} xl={5}>
-            <CCard className="p-4">
+            <CCard className="p-4 shadow-sm border-0">
               <CCardBody>
+                <div className="text-center mb-3">
+                  <IronvalleyLogo size={56} />
+                  <h2 className="mt-2 mb-1 fw-bold" style={{ color: '#432874' }}>AgroBill</h2>
+                  <p className="text-body-secondary small mb-3">Staff Access Request</p>
+                </div>
+
                 <CForm onSubmit={handleSubmit}>
-                  <h2 className="mb-1">Request Access</h2>
-                  <p className="text-body-secondary mb-4">
-                    Submit your details to request access to AgroBill.
-                  </p>
+                  {isControllerNotice && (
+                    <CAlert color="success" className="mb-3">
+                      <div className="fw-bold mb-1">🎉 Recognized as Designated Controller!</div>
+                      <p className="small mb-2">
+                        This email address is authorized as an Administrator. You do not need to wait for employee approval.
+                      </p>
+                      <Link to="/register-controller">
+                        <CButton color="success" size="sm">
+                          Set up Controller Account Directly &rarr;
+                        </CButton>
+                      </Link>
+                    </CAlert>
+                  )}
 
                   {error && (
                     <CAlert color="danger" dismissible onClose={() => setError(null)}>

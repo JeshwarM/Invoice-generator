@@ -18,6 +18,8 @@ import CIcon from '@coreui/icons-react';
 import { cilLockLocked, cilUser } from '@coreui/icons';
 import { useAuth } from '../../context/AuthContext';
 
+import IronvalleyLogo from '../../components/common/IronvalleyLogo';
+
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -48,16 +50,19 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="bg-body-tertiary min-vh-100 d-flex flex-row align-items-center">
+    <div className="bg-body-tertiary min-vh-100 d-flex flex-row align-items-center py-4">
       <CContainer>
         <CRow className="justify-content-center">
           <CCol md={8} lg={6} xl={5}>
             <CCardGroup>
-              <CCard className="p-4">
+              <CCard className="p-4 shadow-sm border-0">
                 <CCardBody>
                   <CForm onSubmit={handleSubmit}>
-                    <h2 className="mb-1">AgroBill</h2>
-                    <p className="text-body-secondary mb-4">Sign in to your account</p>
+                    <div className="text-center mb-3">
+                      <IronvalleyLogo size={56} />
+                      <h2 className="mt-2 mb-1 fw-bold" style={{ color: '#432874' }}>AgroBill</h2>
+                      <p className="text-body-secondary small mb-3">Ironvalley Agronomy Billing Portal</p>
+                    </div>
 
                     {error && (
                       <CAlert color="danger" dismissible onClose={clearError}>
@@ -125,10 +130,17 @@ const LoginPage: React.FC = () => {
                     </div>
 
                     <div className="text-center">
-                      <p className="text-body-secondary mb-2">Don&apos;t have an account?</p>
+                      <p className="text-body-secondary mb-2">Billing Staff / Employee?</p>
                       <Link to="/request-access">
-                        <CButton color="outline-primary">Request Access</CButton>
+                        <CButton color="outline-primary" size="sm" className="px-3 mb-3">Request Employee Access</CButton>
                       </Link>
+
+                      <div className="pt-2 border-top">
+                        <span className="small text-muted me-1">Designated Controller?</span>
+                        <Link to="/register-controller" className="small fw-semibold text-decoration-none" style={{ color: '#5439a8' }}>
+                          Set up Controller Account &rarr;
+                        </Link>
+                      </div>
                     </div>
                   </CForm>
                 </CCardBody>
