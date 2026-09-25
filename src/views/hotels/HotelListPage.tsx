@@ -103,6 +103,16 @@ const HotelListPage: React.FC = () => {
                     <CTableDataCell>{hotel.phone || '—'}</CTableDataCell>
                     <CTableDataCell><StatusBadge status={hotel.active ? 'active' : 'inactive'} /></CTableDataCell>
                     <CTableDataCell>
+                      <CButton
+                        color="info"
+                        variant="outline"
+                        size="sm"
+                        className="me-1"
+                        onClick={() => navigate('/contracts/create', { state: { hotelId: hotel.id } })}
+                        title="Set Vegetable Prices & Contract"
+                      >
+                        Prices & Contract
+                      </CButton>
                       <CButton color="primary" variant="ghost" size="sm" className="me-1" onClick={() => navigate(`/hotels/${hotel.id}/edit`)}>
                         <CIcon icon={cilPencil} />
                       </CButton>

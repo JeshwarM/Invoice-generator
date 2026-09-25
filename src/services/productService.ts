@@ -27,19 +27,63 @@ function mapProduct(id: string, data: Record<string, unknown>): Product {
   };
 }
 
+export const DEFAULT_VEGETABLES: Array<{ name: string; category: ProductCategory; defaultUnit: ProductUnit }> = [
+  { name: 'Tomato (Local)', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Tomato (Hybrid)', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Potato', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Onion (Big)', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Onion (Small/Shallots)', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Carrot (Ooty)', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Beans (French)', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Cauliflower', category: 'vegetables', defaultUnit: 'piece' },
+  { name: 'Cabbage', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Capsicum (Green)', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Capsicum (Red/Yellow)', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Green Chilli', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Ginger', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Garlic (Peeled)', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Spinach (Palak)', category: 'herbs', defaultUnit: 'bundle' },
+  { name: 'Coriander Leaves', category: 'herbs', defaultUnit: 'bundle' },
+  { name: 'Mint Leaves (Pudina)', category: 'herbs', defaultUnit: 'bundle' },
+  { name: 'Cucumber (English)', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Lemon', category: 'fruits', defaultUnit: 'piece' },
+  { name: 'Beetroot', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Mushroom (Button)', category: 'vegetables', defaultUnit: 'packet' },
+  { name: 'Broccoli', category: 'vegetables', defaultUnit: 'kg' },
+  { name: 'Green Peas', category: 'vegetables', defaultUnit: 'kg' },
+];
+
 export async function getProducts(activeOnly: boolean = false): Promise<Product[]> {
-  let q;
-  if (activeOnly) {
-    q = query(
-      collection(db, 'products'),
-      where('active', '==', true),
-      orderBy('name', 'asc')
-    );
-  } else {
-    q = query(collection(db, 'products'), orderBy('name', 'asc'));
+  try {
+    let q;
+    if (activeOnly) {
+      q = query(
+        collection(db, 'products'),
+        where('active', '==', true),
+        orderBy('name', 'asc')
+      );
+    } else {
+      q = query(collection(db, 'products'), orderBy('name', 'asc'));
+    }
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      return snapshot.docs.map((d) => mapProduct(d.id, d.data()));
+    }
+  } catch (err) {
+    console.warn('Could not fetch from Firestore, falling back to default produce catalog:', err);
   }
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => mapProduct(d.id, d.data()));
+
+  // Fallback to default produce catalog
+  return DEFAULT_VEGETABLES.map((v, i) => ({
+    id: `prod_seed_${i + 1}`,
+    name: v.name,
+    category: v.category,
+    defaultUnit: v.defaultUnit,
+    active: true,
+    createdAt: new Date(),
+    createdBy: 'system',
+    updatedAt: new Date(),
+  }));
 }
 
 export async function getProduct(id: string): Promise<Product | null> {

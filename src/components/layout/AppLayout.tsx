@@ -12,7 +12,13 @@ const AppLayout: React.FC = () => {
   return (
     <div>
       <AppSidebar visible={sidebarVisible} onVisibleChange={setSidebarVisible} />
-      <div className="wrapper d-flex flex-column min-vh-100">
+      <div
+        className="wrapper d-flex flex-column min-vh-100"
+        style={{
+          marginLeft: sidebarVisible ? '256px' : '0',
+          transition: 'margin-left 0.2s ease-in-out',
+        }}
+      >
         <AppHeader
           sidebarVisible={sidebarVisible}
           onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}

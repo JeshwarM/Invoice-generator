@@ -64,3 +64,10 @@ body {
     padding: 0 !important;
   }
 }
+
+/* Ensure wrapper does not get margin on mobile/tablet */
+@media (max-width: 991.98px) {
+  .wrapper {
+    margin-left: 0 !important;
+  }
+}

@@ -14,7 +14,7 @@ import {
   CFormFeedback,
 } from '@coreui/react';
 import CIcon from '@coreui/icons-react';
-import { cilSave, cilArrowLeft } from '@coreui/icons';
+import { cilSave, cilArrowLeft, cilPlus } from '@coreui/icons';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -122,8 +122,8 @@ const HotelFormPage: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent, proceedToContract: boolean = false) => {
+    if (e) e.preventDefault();
     setGlobalError(null);
 
     const validationList = validateHotel(formData);
@@ -139,6 +139,7 @@ const HotelFormPage: React.FC = () => {
     setSubmitting(true);
 
     try {
+      let savedHotelId = id;
       if (isEditMode && id) {
         await updateHotel(id, formData, logoFile || undefined);
         await createAuditLog(
@@ -152,6 +153,7 @@ const HotelFormPage: React.FC = () => {
         addToast('success', 'Updated', 'Hotel updated successfully');
       } else {
         const newHotelId = await createHotel(formData, userProfile?.uid || '', logoFile || undefined);
+        savedHotelId = newHotelId;
         await createAuditLog(
           'hotel_created',
           'hotel',
@@ -162,7 +164,12 @@ const HotelFormPage: React.FC = () => {
         );
         addToast('success', 'Created', 'Hotel created successfully');
       }
-      navigate('/hotels');
+
+      if (proceedToContract && savedHotelId) {
+        navigate('/contracts/create', { state: { hotelId: savedHotelId } });
+      } else {
+        navigate('/hotels');
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'An error occurred while saving the hotel.';
       setGlobalError(msg);
@@ -368,10 +375,19 @@ const HotelFormPage: React.FC = () => {
           </CCardBody>
         </CCard>
 
-        <div className="d-flex gap-2">
+        <div className="d-flex gap-2 flex-wrap">
           <CButton color="primary" type="submit" disabled={submitting}>
             <CIcon icon={cilSave} className="me-1" />
             {submitting ? 'Saving...' : isEditMode ? 'Update Hotel' : 'Create Hotel'}
+          </CButton>
+          <CButton
+            color="success"
+            type="button"
+            onClick={() => handleSubmit(undefined, true)}
+            disabled={submitting}
+          >
+            <CIcon icon={cilPlus} className="me-1" />
+            {isEditMode ? 'Save & Edit Vegetable Prices' : 'Save & Set Vegetable Prices (Contract)'}
           </CButton>
           <CButton color="secondary" variant="outline" onClick={() => navigate('/hotels')} disabled={submitting}>
             Cancel

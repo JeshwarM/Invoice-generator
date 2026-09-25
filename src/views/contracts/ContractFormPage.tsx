@@ -141,6 +141,28 @@ const ContractFormPage: React.FC = () => {
     setSelectedProducts((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleLoadAllProduce = () => {
+    const list: SelectedProduct[] = products.map((p) => {
+      const existing = selectedProducts.find((sp) => sp.productId === p.id);
+      return {
+        productId: p.id,
+        productName: p.name,
+        unit: existing?.unit || p.defaultUnit || 'kg',
+        rateInRupees: existing?.rateInRupees || 0,
+      };
+    });
+    setSelectedProducts(list);
+    addToast('info', 'Loaded', `Loaded ${list.length} produce items into contract table. Enter agreed rates below.`);
+  };
+
+  const handleUpdateProductRate = (index: number, rate: number) => {
+    setSelectedProducts((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], rateInRupees: rate };
+      return copy;
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -153,8 +175,9 @@ const ContractFormPage: React.FC = () => {
       setError('Please select a start date.');
       return;
     }
-    if (selectedProducts.length === 0) {
-      setError('Please add at least one product with its contract rate.');
+    const validItems = selectedProducts.filter((p) => p.rateInRupees > 0);
+    if (validItems.length === 0) {
+      setError('Please enter agreed rates (greater than ₹0) for at least one vegetable/product.');
       return;
     }
 
@@ -178,7 +201,7 @@ const ContractFormPage: React.FC = () => {
       );
 
       // Add all products with rates converted to paise
-      for (const item of selectedProducts) {
+      for (const item of validItems) {
         await addContractItem(contractId, {
           productId: item.productId,
           productName: item.productName,
@@ -195,7 +218,7 @@ const ContractFormPage: React.FC = () => {
         userProfile?.name || '',
         {
           hotelName: selectedHotel.hotelName,
-          itemCount: selectedProducts.length,
+          itemCount: validItems.length,
           duration: `${duration} months`,
         }
       );
@@ -304,41 +327,77 @@ const ContractFormPage: React.FC = () => {
 
         {/* Step 3: Product Pricing */}
         <CCard className="mb-4">
-          <CCardHeader className="d-flex justify-content-between align-items-center">
-            <strong>Contract Product Pricing ({selectedProducts.length} items)</strong>
-            <CButton
-              color="primary"
-              size="sm"
-              onClick={openAddProductModal}
-              disabled={submitting || availableProducts.length === 0}
-            >
-              <CIcon icon={cilPlus} className="me-1" />Add Product
-            </CButton>
+          <CCardHeader className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+              <strong>Vegetable & Produce Pricing ({selectedProducts.length} items in list)</strong>
+              <div className="small text-body-secondary">Set the agreed fixed rates per unit for this hotel.</div>
+            </div>
+            <div className="d-flex gap-2">
+              <CButton
+                color="success"
+                variant="outline"
+                size="sm"
+                onClick={handleLoadAllProduce}
+                disabled={submitting || products.length === 0}
+              >
+                Load All Standard Vegetables
+              </CButton>
+              <CButton
+                color="primary"
+                size="sm"
+                onClick={openAddProductModal}
+                disabled={submitting || availableProducts.length === 0}
+              >
+                <CIcon icon={cilPlus} className="me-1" />Add Custom Product
+              </CButton>
+            </div>
           </CCardHeader>
           <CCardBody>
             {selectedProducts.length === 0 ? (
-              <p className="text-body-secondary text-center py-4">
-                No products added yet. Click &quot;Add Product&quot; above to specify hotel-specific rates.
-              </p>
+              <div className="text-center py-4">
+                <p className="text-body-secondary mb-3">
+                  No vegetables added yet. Click &quot;Load All Standard Vegetables&quot; to quickly populate the vegetable list, or &quot;Add Custom Product&quot; to pick individual items.
+                </p>
+                <CButton color="success" size="sm" onClick={handleLoadAllProduce} disabled={products.length === 0}>
+                  Load All Standard Vegetables
+                </CButton>
+              </div>
             ) : (
               <div className="table-responsive">
-                <CTable hover align="middle">
+                <CTable hover align="middle" className="mb-0">
                   <CTableHead>
                     <CTableRow>
-                      <CTableHeaderCell>#</CTableHeaderCell>
-                      <CTableHeaderCell>Product</CTableHeaderCell>
-                      <CTableHeaderCell>Unit</CTableHeaderCell>
-                      <CTableHeaderCell>Agreed Rate (₹)</CTableHeaderCell>
-                      <CTableHeaderCell>Actions</CTableHeaderCell>
+                      <CTableHeaderCell style={{ width: 50 }}>#</CTableHeaderCell>
+                      <CTableHeaderCell>Vegetable / Product</CTableHeaderCell>
+                      <CTableHeaderCell style={{ width: 120 }}>Unit</CTableHeaderCell>
+                      <CTableHeaderCell style={{ width: 180 }}>Agreed Price (₹) *</CTableHeaderCell>
+                      <CTableHeaderCell style={{ width: 80 }}>Actions</CTableHeaderCell>
                     </CTableRow>
                   </CTableHead>
                   <CTableBody>
                     {selectedProducts.map((item, idx) => (
                       <CTableRow key={item.productId}>
                         <CTableDataCell>{idx + 1}</CTableDataCell>
-                        <CTableDataCell><strong>{item.productName}</strong></CTableDataCell>
-                        <CTableDataCell>{item.unit}</CTableDataCell>
-                        <CTableDataCell>₹{item.rateInRupees.toFixed(2)}</CTableDataCell>
+                        <CTableDataCell>
+                          <strong>{item.productName}</strong>
+                        </CTableDataCell>
+                        <CTableDataCell>
+                          <span className="badge bg-secondary-subtle text-body border">{item.unit}</span>
+                        </CTableDataCell>
+                        <CTableDataCell>
+                          <CInputGroup size="sm">
+                            <CInputGroupText>₹</CInputGroupText>
+                            <CFormInput
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={item.rateInRupees > 0 ? item.rateInRupees : ''}
+                              onChange={(e) => handleUpdateProductRate(idx, parseFloat(e.target.value) || 0)}
+                              disabled={submitting}
+                            />
+                          </CInputGroup>
+                        </CTableDataCell>
                         <CTableDataCell>
                           <CButton
                             color="danger"
@@ -346,6 +405,7 @@ const ContractFormPage: React.FC = () => {
                             size="sm"
                             onClick={() => handleRemoveProduct(idx)}
                             disabled={submitting}
+                            title="Remove"
                           >
                             <CIcon icon={cilTrash} />
                           </CButton>
