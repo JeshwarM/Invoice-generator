@@ -12,6 +12,7 @@ import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firest
 import { auth, db } from '../config/firebase';
 import type { User, UserRole, UserStatus } from '../types';
 import { isDesignatedControllerEmail } from '../config/authConfig';
+import { activateEmployeeAccount } from '../services/employeeService';
 
 interface AuthContextType {
   firebaseUser: FirebaseUser | null;
@@ -20,6 +21,7 @@ interface AuthContextType {
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   registerController: (name: string, email: string, password: string) => Promise<void>;
+  activateEmployee: (email: string, password: string) => Promise<void>;
   loginAsDemo: (role?: UserRole, customEmail?: string, customName?: string) => void;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -212,6 +214,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const activateEmployee = useCallback(async (email: string, password: string) => {
+    setError(null);
+    setLoading(true);
+    try {
+      const user = await activateEmployeeAccount(email, password);
+      setUserProfile(user);
+      localStorage.setItem('agrobill_demo_user', JSON.stringify(user));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Activation failed.';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const login = useCallback(async (email: string, password: string) => {
     setError(null);
     setLoading(true);
@@ -360,6 +378,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     error,
     login,
     registerController,
+    activateEmployee,
     loginAsDemo,
     logout,
     resetPassword,

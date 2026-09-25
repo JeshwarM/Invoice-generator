@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   addDoc,
+  setDoc,
   updateDoc,
   getDocs,
   query,
@@ -10,7 +11,8 @@ import {
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { auth, db } from '../config/firebase';
 import type { User, AccessRequest, UserStatus, AccessRequestStatus } from '../types';
 import { getCachedData, setCachedData, withTimeout, CACHE_KEYS } from '../utils/localStore';
 
@@ -186,4 +188,95 @@ export async function updateUserStatus(uid: string, status: UserStatus): Promise
     status,
     updatedAt: serverTimestamp(),
   }).catch(() => {});
+}
+
+export async function getAccessRequestByEmail(email: string): Promise<AccessRequest | null> {
+  const cleanEmail = email.toLowerCase().trim();
+  const cached = getCachedData<AccessRequest[]>(CACHE_KEYS.ACCESS_REQUESTS, []);
+  const localMatch = cached.find((r) => r.email.toLowerCase() === cleanEmail);
+  if (localMatch) return localMatch;
+
+  try {
+    const q = query(collection(db, 'accessRequests'), where('email', '==', cleanEmail));
+    const snapshot = await withTimeout(getDocs(q), 350);
+    if (!snapshot.empty) {
+      const docData = snapshot.docs[0];
+      return mapAccessRequest(docData.id, docData.data());
+    }
+  } catch {}
+
+  return null;
+}
+
+export async function activateEmployeeAccount(
+  email: string,
+  password: string
+): Promise<User> {
+  const cleanEmail = email.toLowerCase().trim();
+  const request = await getAccessRequestByEmail(cleanEmail);
+
+  if (!request) {
+    throw new Error('No access request found for this email. Please submit an access request first.');
+  }
+
+  if (request.status === 'pending') {
+    throw new Error('Your access request is still pending administrator approval. Please wait for the administrator to approve it.');
+  }
+
+  if (request.status === 'rejected') {
+    throw new Error('Your access request was rejected' + (request.rejectionReason ? `: ${request.rejectionReason}` : '. Please contact your administrator.'));
+  }
+
+  // Request is approved! Register locally and in Firebase
+  const newUid = 'emp_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+  const user: User = {
+    uid: newUid,
+    name: request.name,
+    email: cleanEmail,
+    role: 'employee',
+    status: 'active',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    lastLoginAt: new Date(),
+  };
+
+  // 1. Save in local accounts store for offline/local authentication
+  try {
+    const raw = localStorage.getItem('agrobill_accounts');
+    const accounts = raw ? JSON.parse(raw) : [];
+    const filtered = accounts.filter((a: { email: string }) => a.email.toLowerCase() !== cleanEmail);
+    filtered.push({ email: cleanEmail, password, name: request.name, role: 'employee' });
+    localStorage.setItem('agrobill_accounts', JSON.stringify(filtered));
+  } catch {}
+
+  // 2. Add to cached users list
+  const currentUsers = getCachedData<User[]>(CACHE_KEYS.USERS, []);
+  const userFiltered = currentUsers.filter((u) => u.email.toLowerCase() !== cleanEmail);
+  setCachedData(CACHE_KEYS.USERS, [...userFiltered, user]);
+
+  // 3. Sync to Firebase Auth & Firestore with timeout if reachable
+  try {
+    const cred = await withTimeout(createUserWithEmailAndPassword(auth, cleanEmail, password), 500);
+    user.uid = cred.user.uid;
+    try {
+      await updateProfile(cred.user, { displayName: request.name });
+    } catch {}
+    await withTimeout(
+      setDoc(doc(db, 'users', cred.user.uid), {
+        uid: cred.user.uid,
+        name: request.name,
+        email: cleanEmail,
+        role: 'employee',
+        status: 'active',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        lastLoginAt: serverTimestamp(),
+      }),
+      500
+    );
+  } catch {
+    // Non-blocking in offline / local dev
+  }
+
+  return user;
 }

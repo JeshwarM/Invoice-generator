@@ -109,10 +109,15 @@ const LoginPage: React.FC = () => {
                     </CRow>
 
                     <div className="text-center mt-4 pt-3 border-top">
-                      <p className="text-body-secondary mb-2">Billing Staff / Employee?</p>
-                      <Link to="/request-access">
-                        <CButton color="outline-primary" size="sm" className="px-3 mb-3">Request Employee Access</CButton>
-                      </Link>
+                      <p className="text-body-secondary mb-2 small fw-semibold text-uppercase">Billing Staff / Employee</p>
+                      <div className="d-flex justify-content-center align-items-center gap-2 mb-3 flex-wrap">
+                        <Link to="/request-access">
+                          <CButton color="outline-primary" size="sm" className="px-3">Request Access</CButton>
+                        </Link>
+                        <Link to="/activate-account">
+                          <CButton color="outline-success" size="sm" className="px-3">Approved? Set Password</CButton>
+                        </Link>
+                      </div>
 
                       <div className="pt-2 border-top">
                         <span className="small text-muted me-1">Designated Controller?</span>

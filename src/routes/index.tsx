@@ -8,6 +8,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 const LoginPage = lazy(() => import('../views/auth/LoginPage'));
 const RegisterControllerPage = lazy(() => import('../views/auth/RegisterControllerPage'));
 const RequestAccessPage = lazy(() => import('../views/auth/RequestAccessPage'));
+const ActivateAccountPage = lazy(() => import('../views/auth/ActivateAccountPage'));
 const ForgotPasswordPage = lazy(() => import('../views/auth/ForgotPasswordPage'));
 const AccessDeniedPage = lazy(() => import('../views/auth/AccessDeniedPage'));
 const DashboardPage = lazy(() => import('../views/dashboard/DashboardPage'));
@@ -52,6 +53,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
           <Route path="/register-controller" element={<PublicRoute><RegisterControllerPage /></PublicRoute>} />
           <Route path="/request-access" element={<PublicRoute><RequestAccessPage /></PublicRoute>} />
+          <Route path="/activate-account" element={<PublicRoute><ActivateAccountPage /></PublicRoute>} />
           <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
           <Route path="/access-denied" element={<AccessDeniedPage />} />
           <Route path="/logout" element={<LogoutRedirect />} />
