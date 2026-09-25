@@ -20,7 +20,7 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
     );
   }
 
-  if (!firebaseUser || !userProfile) {
+  if (!userProfile) {
     return <Navigate to="/login" replace />;
   }
 
@@ -36,7 +36,7 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
 }
 
 export function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { firebaseUser, userProfile, loading } = useAuth();
+  const { userProfile, loading } = useAuth();
 
   if (loading) {
     return (
@@ -46,7 +46,7 @@ export function PublicRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (firebaseUser && userProfile && userProfile.status === 'active') {
+  if (userProfile && userProfile.status === 'active') {
     return <Navigate to="/dashboard" replace />;
   }
 

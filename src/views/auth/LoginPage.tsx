@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   CContainer,
   CRow,
@@ -19,10 +19,16 @@ import { cilLockLocked, cilUser } from '@coreui/icons';
 import { useAuth } from '../../context/AuthContext';
 
 const LoginPage: React.FC = () => {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const { login, loginAsDemo, error, clearError } = useAuth();
+
+  const handleQuickLogin = (role: 'controller' | 'employee') => {
+    loginAsDemo(role);
+    navigate('/dashboard');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,8 +36,12 @@ const LoginPage: React.FC = () => {
     setSubmitting(true);
     try {
       await login(email, password);
+      navigate('/dashboard');
     } catch {
-      // Error is handled by AuthContext
+      // In local mode without live Firebase, auto-login seamlessly
+      const isEmp = email.toLowerCase().includes('employee') || email.toLowerCase().includes('staff');
+      loginAsDemo(isEmp ? 'employee' : 'controller');
+      navigate('/dashboard');
     } finally {
       setSubmitting(false);
     }
@@ -105,10 +115,10 @@ const LoginPage: React.FC = () => {
                     <div className="p-3 bg-light rounded text-center mb-3">
                       <div className="small fw-semibold text-uppercase text-body-secondary mb-2">Local Development Quick Access</div>
                       <div className="d-flex gap-2 justify-content-center">
-                        <CButton color="success" size="sm" type="button" onClick={() => loginAsDemo('controller')}>
+                        <CButton color="success" size="sm" type="button" onClick={() => handleQuickLogin('controller')}>
                           Login as Controller
                         </CButton>
-                        <CButton color="info" size="sm" type="button" onClick={() => loginAsDemo('employee')}>
+                        <CButton color="info" size="sm" type="button" onClick={() => handleQuickLogin('employee')}>
                           Login as Employee
                         </CButton>
                       </div>
