@@ -15,10 +15,9 @@ import {
 } from '@coreui/react';
 import CIcon from '@coreui/icons-react';
 import { cilUser, cilEnvelopeClosed } from '@coreui/icons';
-import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../config/firebase';
 import { isValidEmail, isRequired } from '../../utils/validators';
 import { isDesignatedControllerEmail } from '../../config/authConfig';
+import { submitAccessRequest } from '../../services/employeeService';
 import IronvalleyLogo from '../../components/common/IronvalleyLogo';
 
 const RequestAccessPage: React.FC = () => {
@@ -50,36 +49,11 @@ const RequestAccessPage: React.FC = () => {
 
     setSubmitting(true);
     try {
-      // Check if a request already exists for this email
-      const existingQuery = query(
-        collection(db, 'accessRequests'),
-        where('email', '==', email.toLowerCase().trim())
-      );
-      const existingSnap = await getDocs(existingQuery);
-      if (!existingSnap.empty) {
-        const existing = existingSnap.docs[0].data();
-        if (existing.status === 'pending') {
-          setError('A request with this email is already pending.');
-          return;
-        }
-        if (existing.status === 'approved') {
-          setError('This email has already been approved. Please log in.');
-          return;
-        }
-      }
-
-      await addDoc(collection(db, 'accessRequests'), {
-        name: name.trim(),
-        email: email.toLowerCase().trim(),
-        status: 'pending',
-        requestedAt: serverTimestamp(),
-        reviewedAt: null,
-        reviewedBy: null,
-      });
+      await submitAccessRequest(name, email);
       setSuccess(true);
     } catch (err) {
-      console.error('Error submitting access request:', err);
-      setError('Failed to submit your request. Please try again.');
+      const msg = err instanceof Error ? err.message : 'Failed to submit your request.';
+      setError(msg);
     } finally {
       setSubmitting(false);
     }

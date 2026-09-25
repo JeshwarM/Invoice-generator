@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  addDoc,
   updateDoc,
   getDocs,
   query,
@@ -37,6 +38,50 @@ function mapAccessRequest(id: string, data: Record<string, unknown>): AccessRequ
     reviewedBy: (data.reviewedBy as string) || null,
     rejectionReason: (data.rejectionReason as string) || undefined,
   };
+}
+
+export async function submitAccessRequest(name: string, email: string): Promise<void> {
+  const cached = getCachedData<AccessRequest[]>(CACHE_KEYS.ACCESS_REQUESTS, []);
+  const cleanEmail = email.toLowerCase().trim();
+  const existing = cached.find((r) => r.email.toLowerCase() === cleanEmail);
+  if (existing) {
+    if (existing.status === 'pending') {
+      throw new Error('A request with this email is already pending.');
+    }
+    if (existing.status === 'approved') {
+      throw new Error('This email has already been approved. Please log in.');
+    }
+  }
+
+  const newRequest: AccessRequest = {
+    id: 'req_' + Date.now(),
+    name: name.trim(),
+    email: cleanEmail,
+    status: 'pending',
+    requestedAt: new Date(),
+    reviewedAt: null,
+    reviewedBy: null,
+  };
+
+  // Immediate local update so the Controller immediately sees it
+  setCachedData(CACHE_KEYS.ACCESS_REQUESTS, [newRequest, ...cached]);
+
+  // Non-blocking firestore sync with 350ms timeout
+  try {
+    await withTimeout(
+      addDoc(collection(db, 'accessRequests'), {
+        name: name.trim(),
+        email: cleanEmail,
+        status: 'pending',
+        requestedAt: serverTimestamp(),
+        reviewedAt: null,
+        reviewedBy: null,
+      }),
+      350
+    );
+  } catch {
+    // Graceful offline fallback
+  }
 }
 
 export async function getAccessRequests(status?: AccessRequestStatus): Promise<AccessRequest[]> {

@@ -311,13 +311,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     try {
       localStorage.removeItem('agrobill_demo_user');
-      await signOut(auth);
       setUserProfile(null);
+      setFirebaseUser(null);
       setError(null);
+      try {
+        await signOut(auth);
+      } catch {}
+      window.location.href = '/login';
     } catch (err) {
       console.error('Logout error:', err);
       setUserProfile(null);
-      setError('Failed to log out. Please try again.');
+      setFirebaseUser(null);
+      window.location.href = '/login';
     }
   }, []);
 

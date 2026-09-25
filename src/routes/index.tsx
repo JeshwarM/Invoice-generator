@@ -25,6 +25,24 @@ const EmployeeListPage = lazy(() => import('../views/employees/EmployeeListPage'
 const AuditLogPage = lazy(() => import('../views/audit/AuditLogPage'));
 const SettingsPage = lazy(() => import('../views/settings/SettingsPage'));
 
+import { useAuth } from '../context/AuthContext';
+
+const RootRedirect: React.FC = () => {
+  const { userProfile, loading } = useAuth();
+  if (loading) {
+    return <LoadingSpinner fullPage message="Loading..." />;
+  }
+  return <Navigate to={userProfile ? "/dashboard" : "/login"} replace />;
+};
+
+const LogoutRedirect: React.FC = () => {
+  const { logout } = useAuth();
+  React.useEffect(() => {
+    logout();
+  }, [logout]);
+  return <Navigate to="/login" replace />;
+};
+
 const AppRoutes: React.FC = () => {
   return (
     <BrowserRouter>
@@ -36,6 +54,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/request-access" element={<PublicRoute><RequestAccessPage /></PublicRoute>} />
           <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
           <Route path="/access-denied" element={<AccessDeniedPage />} />
+          <Route path="/logout" element={<LogoutRedirect />} />
 
           {/* Protected routes with layout */}
           <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
@@ -79,8 +98,8 @@ const AppRoutes: React.FC = () => {
           </Route>
 
           {/* Redirects */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<RootRedirect />} />
+          <Route path="*" element={<RootRedirect />} />
         </Routes>
       </Suspense>
     </BrowserRouter>
