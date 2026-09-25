@@ -33,7 +33,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { getHotels } from '../../services/hotelService';
-import { getProducts, PRODUCT_UNITS } from '../../services/productService';
+import { getProducts, createProduct, PRODUCT_UNITS } from '../../services/productService';
 import { createContract, addContractItem } from '../../services/contractService';
 import { createAuditLog } from '../../services/auditService';
 import { calculateEndDate, formatInputDate } from '../../utils/date';
@@ -70,6 +70,65 @@ const ContractFormPage: React.FC = () => {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Quick Inline Add State
+  const [quickName, setQuickName] = useState('');
+  const [quickUnit, setQuickUnit] = useState<ProductUnit>('kg');
+  const [quickRate, setQuickRate] = useState('');
+
+  const handleQuickAddNewVegetable = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = quickName.trim();
+    if (!trimmed) {
+      addToast('error', 'Error', 'Please enter a vegetable name');
+      return;
+    }
+    const rateNum = parseFloat(quickRate) || 0;
+
+    // Check if already in selectedProducts
+    if (selectedProducts.some((p) => p.productName.toLowerCase() === trimmed.toLowerCase())) {
+      addToast('warning', 'Already in list', `${trimmed} is already in the pricing table.`);
+      return;
+    }
+
+    // Check if exists in products catalog or create new
+    let existingProd = products.find((p) => p.name.toLowerCase() === trimmed.toLowerCase());
+    let prodId = existingProd?.id;
+
+    if (!prodId) {
+      prodId = await createProduct(
+        { name: trimmed, category: 'vegetables', defaultUnit: quickUnit },
+        userProfile?.uid || ''
+      );
+      setProducts((prev) => [
+        ...prev,
+        {
+          id: prodId!,
+          name: trimmed,
+          category: 'vegetables',
+          defaultUnit: quickUnit,
+          active: true,
+          createdAt: new Date(),
+          createdBy: userProfile?.uid || '',
+          updatedAt: new Date(),
+        },
+      ]);
+    }
+
+    setSelectedProducts((prev) => [
+      {
+        productId: prodId!,
+        productName: trimmed,
+        unit: quickUnit,
+        rateInRupees: rateNum,
+      },
+      ...prev,
+    ]);
+
+    setQuickName('');
+    setQuickRate('');
+    addToast('success', 'Added', `Added ${trimmed} to pricing list!`);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -353,10 +412,76 @@ const ContractFormPage: React.FC = () => {
             </div>
           </CCardHeader>
           <CCardBody>
+            {/* Quick Add Any New Vegetable Bar */}
+            <div className="p-3 mb-4 bg-light border rounded">
+              <div className="fw-semibold small text-uppercase text-body-secondary mb-2">
+                ➕ Quick Add Any New Vegetable / Produce
+              </div>
+              <CRow className="g-2 align-items-center">
+                <CCol md={5}>
+                  <CFormInput
+                    placeholder="Enter vegetable name (e.g. Baby Corn, Mushroom, Mint)..."
+                    value={quickName}
+                    onChange={(e) => setQuickName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleQuickAddNewVegetable();
+                      }
+                    }}
+                    size="sm"
+                  />
+                </CCol>
+                <CCol md={3}>
+                  <CFormSelect
+                    value={quickUnit}
+                    onChange={(e) => setQuickUnit(e.target.value as ProductUnit)}
+                    size="sm"
+                  >
+                    {PRODUCT_UNITS.map((u) => (
+                      <option key={u.value} value={u.value}>
+                        {u.label}
+                      </option>
+                    ))}
+                  </CFormSelect>
+                </CCol>
+                <CCol md={2}>
+                  <CInputGroup size="sm">
+                    <CInputGroupText>₹</CInputGroupText>
+                    <CFormInput
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Price"
+                      value={quickRate}
+                      onChange={(e) => setQuickRate(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleQuickAddNewVegetable();
+                        }
+                      }}
+                    />
+                  </CInputGroup>
+                </CCol>
+                <CCol md={2}>
+                  <CButton
+                    color="primary"
+                    size="sm"
+                    className="w-100"
+                    type="button"
+                    onClick={() => handleQuickAddNewVegetable()}
+                  >
+                    <CIcon icon={cilPlus} className="me-1" />Add to List
+                  </CButton>
+                </CCol>
+              </CRow>
+            </div>
+
             {selectedProducts.length === 0 ? (
               <div className="text-center py-4">
                 <p className="text-body-secondary mb-3">
-                  No vegetables added yet. Click &quot;Load All Standard Vegetables&quot; to quickly populate the vegetable list, or &quot;Add Custom Product&quot; to pick individual items.
+                  No vegetables added yet. Click &quot;Load All Standard Vegetables&quot; to quickly populate the vegetable list, or use the quick bar above to add any vegetable.
                 </p>
                 <CButton color="success" size="sm" onClick={handleLoadAllProduce} disabled={products.length === 0}>
                   Load All Standard Vegetables

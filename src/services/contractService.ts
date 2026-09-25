@@ -10,28 +10,33 @@ import {
   orderBy,
   serverTimestamp,
   Timestamp,
-  deleteDoc,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import type { Contract, ContractItem, ContractDuration, ContractStatus, ProductUnit } from '../types';
+import type { Contract, ContractItem, ContractStatus, ContractDuration, ProductUnit } from '../types';
+import { isDateInRange } from '../utils/date';
+import { getCachedData, setCachedData, withTimeout, CACHE_KEYS } from '../utils/localStore';
 
 function mapContract(id: string, data: Record<string, unknown>): Contract {
+  const toDate = (v: unknown): Date =>
+    v instanceof Timestamp ? v.toDate() : v ? new Date(v as string) : new Date();
   return {
     id,
     hotelId: (data.hotelId as string) || '',
     hotelName: (data.hotelName as string) || '',
     contractNumber: (data.contractNumber as string) || '',
-    startDate: data.startDate instanceof Timestamp ? data.startDate.toDate() : new Date(data.startDate as string),
-    endDate: data.endDate instanceof Timestamp ? data.endDate.toDate() : new Date(data.endDate as string),
+    startDate: toDate(data.startDate),
+    endDate: toDate(data.endDate),
     duration: (data.duration as ContractDuration) || 12,
     status: (data.status as ContractStatus) || 'draft',
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
+    createdAt: toDate(data.createdAt),
     createdBy: (data.createdBy as string) || '',
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(),
+    updatedAt: toDate(data.updatedAt),
   };
 }
 
 function mapContractItem(id: string, data: Record<string, unknown>): ContractItem {
+  const toDate = (v: unknown): Date =>
+    v instanceof Timestamp ? v.toDate() : v ? new Date(v as string) : new Date();
   return {
     id,
     contractId: (data.contractId as string) || '',
@@ -40,63 +45,89 @@ function mapContractItem(id: string, data: Record<string, unknown>): ContractIte
     unit: (data.unit as ProductUnit) || 'kg',
     rate: (data.rate as number) || 0,
     active: data.active !== false,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(),
+    createdAt: toDate(data.createdAt),
+    updatedAt: toDate(data.updatedAt),
   };
 }
 
 export async function getContracts(hotelId?: string): Promise<Contract[]> {
-  let q;
-  if (hotelId) {
-    q = query(collection(db, 'contracts'), where('hotelId', '==', hotelId), orderBy('startDate', 'desc'));
-  } else {
-    q = query(collection(db, 'contracts'), orderBy('startDate', 'desc'));
+  const cached = getCachedData<Contract[]>(CACHE_KEYS.CONTRACTS, []);
+  const filteredCached = hotelId ? cached.filter((c) => c.hotelId === hotelId) : cached;
+
+  try {
+    let q;
+    if (hotelId) {
+      q = query(collection(db, 'contracts'), where('hotelId', '==', hotelId), orderBy('startDate', 'desc'));
+    } else {
+      q = query(collection(db, 'contracts'), orderBy('startDate', 'desc'));
+    }
+    const snapshot = await withTimeout(getDocs(q), 600);
+    if (!snapshot.empty) {
+      const live = snapshot.docs.map((d) => mapContract(d.id, d.data()));
+      setCachedData(CACHE_KEYS.CONTRACTS, live);
+      return live;
+    }
+  } catch {
+    // Return cached immediately
   }
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => mapContract(d.id, d.data()));
+
+  return filteredCached;
 }
 
 export async function getContract(id: string): Promise<Contract | null> {
-  const snap = await getDoc(doc(db, 'contracts', id));
-  if (!snap.exists()) return null;
-  return mapContract(snap.id, snap.data());
+  const cached = getCachedData<Contract[]>(CACHE_KEYS.CONTRACTS, []);
+  const found = cached.find((c) => c.id === id);
+  if (found) return found;
+
+  try {
+    const snap = await withTimeout(getDoc(doc(db, 'contracts', id)), 600);
+    if (snap.exists()) return mapContract(snap.id, snap.data());
+  } catch {}
+  return null;
 }
 
-/**
- * Find the active contract for a hotel on a specific delivery date.
- * Uses: startDate <= deliveryDate AND deliveryDate <= endDate AND status == 'active'
- */
 export async function findActiveContractForDate(
   hotelId: string,
   deliveryDate: Date
 ): Promise<Contract | null> {
-  const q = query(
-    collection(db, 'contracts'),
-    where('hotelId', '==', hotelId),
-    where('status', '==', 'active')
+  const cached = getCachedData<Contract[]>(CACHE_KEYS.CONTRACTS, []);
+  const matchingCached = cached.find(
+    (c) =>
+      c.hotelId === hotelId &&
+      c.status === 'active' &&
+      isDateInRange(new Date(deliveryDate), new Date(c.startDate), new Date(c.endDate))
   );
-  const snapshot = await getDocs(q);
-  const delivery = new Date(deliveryDate.getFullYear(), deliveryDate.getMonth(), deliveryDate.getDate());
-  
-  for (const d of snapshot.docs) {
-    const contract = mapContract(d.id, d.data());
-    const start = new Date(contract.startDate.getFullYear(), contract.startDate.getMonth(), contract.startDate.getDate());
-    const end = new Date(contract.endDate.getFullYear(), contract.endDate.getMonth(), contract.endDate.getDate());
-    if (delivery >= start && delivery <= end) {
-      return contract;
+  if (matchingCached) return matchingCached;
+
+  try {
+    const q = query(
+      collection(db, 'contracts'),
+      where('hotelId', '==', hotelId),
+      where('status', '==', 'active')
+    );
+    const snapshot = await withTimeout(getDocs(q), 600);
+    for (const d of snapshot.docs) {
+      const contract = mapContract(d.id, d.data());
+      if (isDateInRange(new Date(deliveryDate), new Date(contract.startDate), new Date(contract.endDate))) {
+        return contract;
+      }
     }
-  }
+  } catch {}
+
   return null;
 }
 
 export async function getActiveContracts(): Promise<Contract[]> {
-  const q = query(
-    collection(db, 'contracts'),
-    where('status', '==', 'active'),
-    orderBy('endDate', 'asc')
-  );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => mapContract(d.id, d.data()));
+  const cached = getCachedData<Contract[]>(CACHE_KEYS.CONTRACTS, []);
+  const activeCached = cached.filter((c) => c.status === 'active');
+  try {
+    const q = query(collection(db, 'contracts'), where('status', '==', 'active'), orderBy('endDate', 'asc'));
+    const snapshot = await withTimeout(getDocs(q), 600);
+    if (!snapshot.empty) {
+      return snapshot.docs.map((d) => mapContract(d.id, d.data()));
+    }
+  } catch {}
+  return activeCached;
 }
 
 export async function getExpiringContracts(withinDays: number = 30): Promise<Contract[]> {
@@ -105,15 +136,7 @@ export async function getExpiringContracts(withinDays: number = 30): Promise<Con
   futureDate.setDate(now.getDate() + withinDays);
 
   const contracts = await getActiveContracts();
-  return contracts.filter((c) => c.endDate <= futureDate && c.endDate >= now);
-}
-
-function generateContractNumber(hotelName: string, startDate: Date): string {
-  const prefix = hotelName.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'X');
-  const year = startDate.getFullYear().toString().slice(-2);
-  const month = (startDate.getMonth() + 1).toString().padStart(2, '0');
-  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `CNT-${prefix}-${year}${month}-${rand}`;
+  return contracts.filter((c) => new Date(c.endDate) <= futureDate && new Date(c.endDate) >= now);
 }
 
 export async function createContract(
@@ -126,64 +149,103 @@ export async function createContract(
   },
   createdBy: string
 ): Promise<string> {
-  const contractNumber = generateContractNumber(data.hotelName, data.startDate);
-  const docRef = await addDoc(collection(db, 'contracts'), {
+  const contractNumber = `CNT_${Date.now().toString().slice(-6)}`;
+  const newId = `contract_${Date.now()}`;
+
+  const newContract: Contract = {
+    id: newId,
+    hotelId: data.hotelId,
+    hotelName: data.hotelName,
+    contractNumber,
+    startDate: data.startDate,
+    endDate: data.endDate,
+    duration: data.duration,
+    status: 'active',
+    createdAt: new Date(),
+    createdBy,
+    updatedAt: new Date(),
+  };
+
+  // Instant local cache save
+  const current = getCachedData<Contract[]>(CACHE_KEYS.CONTRACTS, []);
+  setCachedData(CACHE_KEYS.CONTRACTS, [newContract, ...current]);
+
+  // Sync to Firestore in background
+  addDoc(collection(db, 'contracts'), {
     hotelId: data.hotelId,
     hotelName: data.hotelName,
     contractNumber,
     startDate: Timestamp.fromDate(data.startDate),
     endDate: Timestamp.fromDate(data.endDate),
     duration: data.duration,
-    status: 'active' as ContractStatus,
+    status: 'active',
     createdAt: serverTimestamp(),
     createdBy,
     updatedAt: serverTimestamp(),
-  });
-  return docRef.id;
+  }).catch(() => {});
+
+  return newId;
 }
 
-export async function updateContractStatus(id: string, status: ContractStatus): Promise<void> {
-  await updateDoc(doc(db, 'contracts', id), { status, updatedAt: serverTimestamp() });
-}
-
-// Contract Items
 export async function getContractItems(contractId: string): Promise<ContractItem[]> {
-  const q = query(
-    collection(db, 'contractItems'),
-    where('contractId', '==', contractId),
-    orderBy('productName', 'asc')
-  );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => mapContractItem(d.id, d.data()));
+  const cached = getCachedData<ContractItem[]>(CACHE_KEYS.CONTRACT_ITEMS, []);
+  const matching = cached.filter((item) => item.contractId === contractId);
+  if (matching.length > 0) return matching;
+
+  try {
+    const q = query(
+      collection(db, 'contracts', contractId, 'items'),
+      where('active', '==', true),
+      orderBy('productName', 'asc')
+    );
+    const snapshot = await withTimeout(getDocs(q), 600);
+    if (!snapshot.empty) {
+      const live = snapshot.docs.map((d) => mapContractItem(d.id, d.data()));
+      setCachedData(CACHE_KEYS.CONTRACT_ITEMS, [...cached.filter((i) => i.contractId !== contractId), ...live]);
+      return live;
+    }
+  } catch {}
+
+  return matching;
 }
 
 export async function addContractItem(
   contractId: string,
-  data: { productId: string; productName: string; unit: ProductUnit; rate: number }
+  data: {
+    productId: string;
+    productName: string;
+    unit: ProductUnit;
+    rate: number; // in paise
+  }
 ): Promise<string> {
-  const docRef = await addDoc(collection(db, 'contractItems'), {
+  const newId = `citem_${Date.now()}_${Math.random().toString(36).slice(-4)}`;
+  const newItem: ContractItem = {
+    id: newId,
     contractId,
     productId: data.productId,
     productName: data.productName,
     unit: data.unit,
-    rate: data.rate, // stored in paise
+    rate: data.rate,
+    active: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  // Instant local save
+  const cached = getCachedData<ContractItem[]>(CACHE_KEYS.CONTRACT_ITEMS, []);
+  setCachedData(CACHE_KEYS.CONTRACT_ITEMS, [...cached, newItem]);
+
+  // Sync in background
+  addDoc(collection(db, 'contracts', contractId, 'items'), {
+    contractId,
+    productId: data.productId,
+    productName: data.productName,
+    unit: data.unit,
+    rate: data.rate,
     active: true,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
-  return docRef.id;
-}
+  }).catch(() => {});
 
-export async function updateContractItem(
-  id: string,
-  data: Partial<{ rate: number; unit: ProductUnit; active: boolean }>
-): Promise<void> {
-  await updateDoc(doc(db, 'contractItems', id), {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
-}
-
-export async function removeContractItem(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'contractItems', id));
+  return newId;
 }

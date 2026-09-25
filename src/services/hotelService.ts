@@ -14,6 +14,7 @@ import {
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import type { Hotel } from '../types';
+import { getCachedData, setCachedData, withTimeout, CACHE_KEYS } from '../utils/localStore';
 
 function mapHotel(id: string, data: Record<string, unknown>): Hotel {
   return {
@@ -31,7 +32,7 @@ function mapHotel(id: string, data: Record<string, unknown>): Hotel {
     contactPerson: (data.contactPerson as string) || '',
     phone: (data.phone as string) || '',
     email: (data.email as string) || '',
-    active: data.active as boolean,
+    active: data.active !== false,
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
     createdBy: (data.createdBy as string) || '',
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(),
@@ -39,20 +40,40 @@ function mapHotel(id: string, data: Record<string, unknown>): Hotel {
 }
 
 export async function getHotels(activeOnly: boolean = false): Promise<Hotel[]> {
-  let q;
-  if (activeOnly) {
-    q = query(collection(db, 'hotels'), where('active', '==', true), orderBy('hotelName', 'asc'));
-  } else {
-    q = query(collection(db, 'hotels'), orderBy('hotelName', 'asc'));
+  const cached = getCachedData<Hotel[]>(CACHE_KEYS.HOTELS, []);
+
+  try {
+    let q;
+    if (activeOnly) {
+      q = query(collection(db, 'hotels'), where('active', '==', true), orderBy('hotelName', 'asc'));
+    } else {
+      q = query(collection(db, 'hotels'), orderBy('hotelName', 'asc'));
+    }
+    const snapshot = await withTimeout(getDocs(q), 600);
+    if (!snapshot.empty) {
+      const live = snapshot.docs.map((d) => mapHotel(d.id, d.data()));
+      setCachedData(CACHE_KEYS.HOTELS, live);
+      return activeOnly ? live.filter((h) => h.active) : live;
+    }
+  } catch {
+    // Return cached immediately
   }
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => mapHotel(d.id, d.data()));
+
+  return activeOnly ? cached.filter((h) => h.active) : cached;
 }
 
 export async function getHotel(id: string): Promise<Hotel | null> {
-  const snap = await getDoc(doc(db, 'hotels', id));
-  if (!snap.exists()) return null;
-  return mapHotel(snap.id, snap.data());
+  const cached = getCachedData<Hotel[]>(CACHE_KEYS.HOTELS, []);
+  const found = cached.find((h) => h.id === id);
+  if (found) return found;
+
+  try {
+    const snap = await withTimeout(getDoc(doc(db, 'hotels', id)), 600);
+    if (snap.exists()) return mapHotel(snap.id, snap.data());
+  } catch {
+    // Ignore timeout
+  }
+  return null;
 }
 
 export async function createHotel(
@@ -61,10 +82,24 @@ export async function createHotel(
   logoFile?: File
 ): Promise<string> {
   let logoUrl = '';
-  if (logoFile) {
-    logoUrl = await uploadHotelLogo(logoFile, `hotel_${Date.now()}`);
-  }
-  const docRef = await addDoc(collection(db, 'hotels'), {
+  const newId = `hotel_${Date.now()}`;
+
+  const newHotel: Hotel = {
+    ...data,
+    id: newId,
+    logoUrl,
+    active: true,
+    createdAt: new Date(),
+    createdBy,
+    updatedAt: new Date(),
+  };
+
+  // Instant local save
+  const current = getCachedData<Hotel[]>(CACHE_KEYS.HOTELS, []);
+  setCachedData(CACHE_KEYS.HOTELS, [newHotel, ...current]);
+
+  // Sync to Firestore in background
+  addDoc(collection(db, 'hotels'), {
     hotelName: data.hotelName.trim(),
     logoUrl,
     address: data.address.trim(),
@@ -82,49 +117,67 @@ export async function createHotel(
     createdAt: serverTimestamp(),
     createdBy,
     updatedAt: serverTimestamp(),
-  });
-  // Update logo path with actual hotel ID
-  if (logoFile) {
-    const finalLogoUrl = await uploadHotelLogo(logoFile, docRef.id);
-    await updateDoc(doc(db, 'hotels', docRef.id), { logoUrl: finalLogoUrl });
-  }
-  return docRef.id;
+  }).then(async (docRef) => {
+    if (logoFile) {
+      try {
+        const finalLogoUrl = await uploadHotelLogo(logoFile, docRef.id);
+        await updateDoc(doc(db, 'hotels', docRef.id), { logoUrl: finalLogoUrl });
+      } catch {}
+    }
+  }).catch(() => {});
+
+  return newId;
 }
 
 export async function updateHotel(
   id: string,
-  data: Partial<Hotel>,
+  data: Partial<Omit<Hotel, 'id' | 'createdAt' | 'updatedAt'>>,
   logoFile?: File
 ): Promise<void> {
-  const updateData: Record<string, unknown> = { ...data, updatedAt: serverTimestamp() };
-  if (logoFile) {
-    updateData.logoUrl = await uploadHotelLogo(logoFile, id);
-  }
-  delete updateData.id;
-  delete updateData.createdAt;
-  delete updateData.createdBy;
-  await updateDoc(doc(db, 'hotels', id), updateData);
+  const current = getCachedData<Hotel[]>(CACHE_KEYS.HOTELS, []);
+  const updated = current.map((h) => (h.id === id ? { ...h, ...data, updatedAt: new Date() } : h));
+  setCachedData(CACHE_KEYS.HOTELS, updated);
+
+  const updates: Record<string, unknown> = {
+    ...data,
+    updatedAt: serverTimestamp(),
+  };
+  if (data.hotelName) updates.hotelName = data.hotelName.trim();
+  if (data.gstin) updates.gstin = data.gstin.trim().toUpperCase();
+  if (data.pan) updates.pan = data.pan.trim().toUpperCase();
+
+  updateDoc(doc(db, 'hotels', id), updates).then(async () => {
+    if (logoFile) {
+      const finalLogoUrl = await uploadHotelLogo(logoFile, id);
+      await updateDoc(doc(db, 'hotels', id), { logoUrl: finalLogoUrl });
+    }
+  }).catch(() => {});
 }
 
 export async function toggleHotelActive(id: string, active: boolean): Promise<void> {
-  await updateDoc(doc(db, 'hotels', id), { active, updatedAt: serverTimestamp() });
+  return updateHotel(id, { active });
 }
 
-async function uploadHotelLogo(file: File, hotelId: string): Promise<string> {
-  const ext = file.name.split('.').pop() || 'png';
-  const storageRef = ref(storage, `hotels/${hotelId}/logo.${ext}`);
-  await uploadBytes(storageRef, file, { contentType: file.type });
-  return getDownloadURL(storageRef);
+export async function uploadHotelLogo(file: File, hotelId: string): Promise<string> {
+  try {
+    const ext = file.name.split('.').pop() || 'png';
+    const storageRef = ref(storage, `hotels/${hotelId}/logo.${ext}`);
+    const metadata = { contentType: file.type };
+    await uploadBytes(storageRef, file, metadata);
+    return await getDownloadURL(storageRef);
+  } catch {
+    return '';
+  }
 }
 
 export function validateLogoFile(file: File): string | null {
-  const MAX_SIZE = 5 * 1024 * 1024; // 5MB
-  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
-  if (!ALLOWED_TYPES.includes(file.type)) {
-    return 'Logo must be JPEG, PNG, WebP, or SVG format.';
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
+  if (!allowedTypes.includes(file.type)) {
+    return 'Invalid file type. Allowed: JPEG, PNG, WebP, SVG.';
   }
-  if (file.size > MAX_SIZE) {
-    return 'Logo must be smaller than 5MB.';
+  const maxSize = 5 * 1024 * 1024;
+  if (file.size > maxSize) {
+    return 'File size exceeds 5MB limit.';
   }
   return null;
 }

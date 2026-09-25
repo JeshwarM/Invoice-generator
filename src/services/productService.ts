@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { Product, ProductCategory, ProductUnit } from '../types';
+import { getCachedData, setCachedData, withTimeout, CACHE_KEYS } from '../utils/localStore';
 
 function mapProduct(id: string, data: Record<string, unknown>): Product {
   return {
@@ -20,9 +21,9 @@ function mapProduct(id: string, data: Record<string, unknown>): Product {
     name: data.name as string,
     category: data.category as ProductCategory,
     defaultUnit: data.defaultUnit as ProductUnit,
-    active: data.active as boolean,
+    active: data.active !== false,
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
-    createdBy: data.createdBy as string,
+    createdBy: (data.createdBy as string) || 'system',
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(),
   };
 }
@@ -53,27 +54,7 @@ export const DEFAULT_VEGETABLES: Array<{ name: string; category: ProductCategory
   { name: 'Green Peas', category: 'vegetables', defaultUnit: 'kg' },
 ];
 
-export async function getProducts(activeOnly: boolean = false): Promise<Product[]> {
-  try {
-    let q;
-    if (activeOnly) {
-      q = query(
-        collection(db, 'products'),
-        where('active', '==', true),
-        orderBy('name', 'asc')
-      );
-    } else {
-      q = query(collection(db, 'products'), orderBy('name', 'asc'));
-    }
-    const snapshot = await getDocs(q);
-    if (!snapshot.empty) {
-      return snapshot.docs.map((d) => mapProduct(d.id, d.data()));
-    }
-  } catch (err) {
-    console.warn('Could not fetch from Firestore, falling back to default produce catalog:', err);
-  }
-
-  // Fallback to default produce catalog
+function getInitialDefaultProducts(): Product[] {
   return DEFAULT_VEGETABLES.map((v, i) => ({
     id: `prod_seed_${i + 1}`,
     name: v.name,
@@ -86,49 +67,107 @@ export async function getProducts(activeOnly: boolean = false): Promise<Product[
   }));
 }
 
+export async function getProducts(activeOnly: boolean = false): Promise<Product[]> {
+  // 1. Instant Cache Return (< 2ms)
+  const cached = getCachedData<Product[]>(CACHE_KEYS.PRODUCTS, getInitialDefaultProducts());
+
+  // 2. Try Firestore with fast timeout
+  try {
+    let q;
+    if (activeOnly) {
+      q = query(collection(db, 'products'), where('active', '==', true), orderBy('name', 'asc'));
+    } else {
+      q = query(collection(db, 'products'), orderBy('name', 'asc'));
+    }
+    const snapshot = await withTimeout(getDocs(q), 600);
+    if (!snapshot.empty) {
+      const live = snapshot.docs.map((d) => mapProduct(d.id, d.data()));
+      setCachedData(CACHE_KEYS.PRODUCTS, live);
+      return activeOnly ? live.filter((p) => p.active) : live;
+    }
+  } catch {
+    // Timeout or offline — use cached items immediately
+  }
+
+  return activeOnly ? cached.filter((p) => p.active) : cached;
+}
+
 export async function getProduct(id: string): Promise<Product | null> {
-  const snap = await getDoc(doc(db, 'products', id));
-  if (!snap.exists()) return null;
-  return mapProduct(snap.id, snap.data());
+  const cached = getCachedData<Product[]>(CACHE_KEYS.PRODUCTS, []);
+  const found = cached.find((p) => p.id === id);
+  if (found) return found;
+
+  try {
+    const snap = await withTimeout(getDoc(doc(db, 'products', id)), 600);
+    if (snap.exists()) return mapProduct(snap.id, snap.data());
+  } catch {
+    // Ignore timeout
+  }
+  return null;
 }
 
 export async function createProduct(
-  data: { name: string; category: ProductCategory; defaultUnit: ProductUnit },
+  data: { name: string; category?: ProductCategory; defaultUnit?: ProductUnit },
   createdBy: string
 ): Promise<string> {
-  const docRef = await addDoc(collection(db, 'products'), {
-    name: data.name.trim(),
-    category: data.category,
-    defaultUnit: data.defaultUnit,
+  const name = data.name.trim();
+  const category = data.category || 'vegetables';
+  const defaultUnit = data.defaultUnit || 'kg';
+  const newId = `prod_${Date.now()}`;
+
+  const newProduct: Product = {
+    id: newId,
+    name,
+    category,
+    defaultUnit,
+    active: true,
+    createdAt: new Date(),
+    createdBy,
+    updatedAt: new Date(),
+  };
+
+  // Instant local cache save
+  const current = getCachedData<Product[]>(CACHE_KEYS.PRODUCTS, getInitialDefaultProducts());
+  setCachedData(CACHE_KEYS.PRODUCTS, [...current, newProduct]);
+
+  // Sync to Firestore in background
+  addDoc(collection(db, 'products'), {
+    name,
+    category,
+    defaultUnit,
     active: true,
     createdAt: serverTimestamp(),
     createdBy,
     updatedAt: serverTimestamp(),
+  }).catch(() => {
+    // Handled silently
   });
-  return docRef.id;
+
+  return newId;
 }
 
 export async function updateProduct(
   id: string,
   data: Partial<{ name: string; category: ProductCategory; defaultUnit: ProductUnit; active: boolean }>
 ): Promise<void> {
-  await updateDoc(doc(db, 'products', id), {
+  const current = getCachedData<Product[]>(CACHE_KEYS.PRODUCTS, []);
+  const updated = current.map((p) => (p.id === id ? { ...p, ...data, updatedAt: new Date() } : p));
+  setCachedData(CACHE_KEYS.PRODUCTS, updated);
+
+  updateDoc(doc(db, 'products', id), {
     ...data,
     updatedAt: serverTimestamp(),
-  });
+  }).catch(() => {});
 }
 
 export async function toggleProductActive(id: string, active: boolean): Promise<void> {
-  await updateDoc(doc(db, 'products', id), {
-    active,
-    updatedAt: serverTimestamp(),
-  });
+  return updateProduct(id, { active });
 }
 
 export const PRODUCT_CATEGORIES: { value: ProductCategory; label: string }[] = [
   { value: 'vegetables', label: 'Vegetables' },
   { value: 'fruits', label: 'Fruits' },
-  { value: 'herbs', label: 'Herbs' },
+  { value: 'herbs', label: 'Herbs & Greens' },
   { value: 'spices', label: 'Spices' },
   { value: 'dairy', label: 'Dairy' },
   { value: 'grocery', label: 'Grocery' },
