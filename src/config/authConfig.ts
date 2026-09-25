@@ -8,10 +8,10 @@
  */
 
 export const DESIGNATED_CONTROLLER_EMAILS: string[] = [
+  'jeshwarmurali@gmail.com',
   'info@ironvalleyagro.in',
   'admin@ironvalleyagro.in',
   'controller@agrobill.com',
-  // Your 2 to 3 personal/company emails will be added here
 ];
 
 /**
