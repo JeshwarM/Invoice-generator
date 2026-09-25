@@ -39,8 +39,29 @@ function mapHotel(id: string, data: Record<string, unknown>): Hotel {
   };
 }
 
+export const DEFAULT_HOTEL: Hotel = {
+  id: 'hotel_taj_coromandel',
+  hotelName: 'TAJ Coromandel Hotel',
+  logoUrl: '',
+  address: '37,Uthamar gandhi road, near makkal tv office,tirumurthy nagar nungambakkam,',
+  city: 'Chennai',
+  state: '',
+  pincode: '600034',
+  country: 'India',
+  gstin: '',
+  pan: '',
+  fssai: '',
+  contactPerson: '',
+  phone: '',
+  email: '',
+  active: true,
+  createdAt: new Date(),
+  createdBy: 'system',
+  updatedAt: new Date(),
+};
+
 export async function getHotels(activeOnly: boolean = false): Promise<Hotel[]> {
-  const cached = getCachedData<Hotel[]>(CACHE_KEYS.HOTELS, []);
+  const cached = getCachedData<Hotel[]>(CACHE_KEYS.HOTELS, [DEFAULT_HOTEL]);
 
   try {
     let q;

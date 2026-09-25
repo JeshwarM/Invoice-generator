@@ -52,16 +52,43 @@ body {
 
 /* Invoice preview print styles */
 @media print {
+  body {
+    background-color: #ffffff !important;
+  }
   .sidebar,
   .header,
   .footer,
   .breadcrumb,
-  .no-print {
+  .no-print,
+  .btn,
+  button,
+  .card-header,
+  .alert {
     display: none !important;
   }
-  .body {
+  .wrapper {
     margin: 0 !important;
     padding: 0 !important;
+  }
+  .body, .container-lg {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+  .card, .card-body {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+  .invoice-exact-sheet {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  @page {
+    size: A4;
+    margin: 12mm 10mm;
   }
 }
 

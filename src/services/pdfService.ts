@@ -1,232 +1,240 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas';
 import type { Invoice } from '../types';
 import { formatCurrency, paiseToRupees, isWeightUnit } from '../utils/calculations';
 import { formatDisplayDate } from '../utils/date';
 
-const PURPLE = '#5b3e96';
-const LIGHT_PURPLE = '#f8f7fc';
+const PURPLE = '#5439a8';
+const TEXT_PURPLE = '#583eb5';
+const LIGHT_CARD_BG = [241, 243, 250] as [number, number, number];
 
 /**
- * Generate a professional PDF invoice matching the sample invoice's visual hierarchy.
- * High-fidelity dynamic reproduction with proper multi-page support.
+ * Generate a high-fidelity PDF invoice matching the exact sample invoice.
+ * Tries high-resolution html2canvas capture from the DOM if available,
+ * with vector jsPDF fallback.
  */
-export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
+export async function generateInvoicePDF(invoice: Invoice, targetElementId?: string): Promise<void> {
+  const elementId = targetElementId || 'invoice-document-root';
+  const element = document.getElementById(elementId);
+
+  if (element) {
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2, // Retinal high-resolution quality
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+
+      const imgWidth = pdfWidth;
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pdfHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pdfHeight;
+      }
+
+      pdf.save(`Invoice_${invoice.invoiceNumber}.pdf`);
+      return;
+    } catch (err) {
+      console.warn('html2canvas capture failed, falling back to programmatic jsPDF renderer:', err);
+    }
+  }
+
+  // Programmatic vector jsPDF fallback
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pageWidth = pdf.internal.pageSize.getWidth();
-  const margin = 15;
+  const margin = 14;
   const contentWidth = pageWidth - margin * 2;
   let y = margin;
 
-  const addNewPageIfNeeded = (requiredSpace: number) => {
-    if (y + requiredSpace > pdf.internal.pageSize.getHeight() - 20) {
-      pdf.addPage();
-      y = margin;
-    }
-  };
-
-  // ===== HEADER =====
-  pdf.setFillColor(PURPLE);
-  pdf.rect(0, 0, pageWidth, 35, 'F');
-  pdf.setTextColor(255, 255, 255);
-  pdf.setFontSize(20);
+  // Header Title
   pdf.setFont('helvetica', 'bold');
-  pdf.text('SALES INVOICE', pageWidth / 2, 18, { align: 'center' });
-  pdf.setFontSize(9);
+  pdf.setFontSize(22);
+  pdf.setTextColor(88, 62, 181);
+  pdf.text('Sales Invoice', margin, y + 8);
+
   pdf.setFont('helvetica', 'normal');
-  pdf.text(`Invoice No: ${invoice.invoiceNumber}`, margin, 28);
-  pdf.text(`Invoice Date: ${formatDisplayDate(invoice.invoiceDate)}`, pageWidth - margin, 28, { align: 'right' });
+  pdf.setFontSize(9);
+  pdf.setTextColor(107, 114, 128);
+  pdf.text('Invoice No #', margin, y + 16);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(24, 24, 27);
+  pdf.text(invoice.invoiceNumber, margin + 28, y + 16);
 
-  y = 42;
-  pdf.setTextColor(0, 0, 0);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setTextColor(107, 114, 128);
+  pdf.text('Invoice Date', margin, y + 22);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(24, 24, 27);
+  pdf.text(formatDisplayDate(invoice.invoiceDate), margin + 28, y + 22);
 
-  // ===== BILLED BY / BILLED TO =====
+  y += 28;
+
+  // Billed By & Billed To Cards
   const supplier = invoice.supplierSnapshot;
   const hotel = invoice.hotelSnapshot;
-  const colWidth = (contentWidth - 6) / 2;
+  const cardWidth = (contentWidth - 6) / 2;
 
-  // Billed By box
-  pdf.setDrawColor(200, 200, 200);
-  pdf.setFillColor(248, 247, 252);
-  pdf.roundedRect(margin, y, colWidth, 45, 2, 2, 'FD');
-
+  // Billed By
+  pdf.setFillColor(...LIGHT_CARD_BG);
+  pdf.roundedRect(margin, y, cardWidth, 42, 2, 2, 'F');
   pdf.setFontSize(10);
   pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(91, 62, 150);
-  pdf.text('Billed By', margin + 4, y + 7);
-  pdf.setTextColor(0, 0, 0);
-  pdf.setFontSize(9);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text(supplier.companyName || '', margin + 4, y + 14);
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(7);
-  let billedByY = y + 19;
-  const supplierAddr = [supplier.address, supplier.city, supplier.state, supplier.pincode].filter(Boolean).join(', ');
-  if (supplierAddr) { pdf.text(supplierAddr, margin + 4, billedByY); billedByY += 4; }
-  if (supplier.gstin) { pdf.text(`GSTIN: ${supplier.gstin}`, margin + 4, billedByY); billedByY += 4; }
-  if (supplier.pan) { pdf.text(`PAN: ${supplier.pan}`, margin + 4, billedByY); billedByY += 4; }
-  if (supplier.fssai) { pdf.text(`FSSAI: ${supplier.fssai}`, margin + 4, billedByY); billedByY += 4; }
-  if (supplier.phone) { pdf.text(`Phone: ${supplier.phone}`, margin + 4, billedByY); billedByY += 4; }
-  if (supplier.email) { pdf.text(`Email: ${supplier.email}`, margin + 4, billedByY); }
+  pdf.setTextColor(88, 62, 181);
+  pdf.text('Billed By', margin + 4, y + 6);
 
-  // Billed To box
-  const rightX = margin + colWidth + 6;
-  pdf.setFillColor(248, 247, 252);
-  pdf.roundedRect(rightX, y, colWidth, 45, 2, 2, 'FD');
+  pdf.setFontSize(8);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(17, 24, 39);
+  pdf.text(supplier.companyName || 'IRONVALLEY AGRONOMY PRIVATE LIMITED', margin + 4, y + 12);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(7.5);
+  pdf.setTextColor(55, 65, 81);
+  pdf.text(supplier.address || 'Tamil Nadu, India', margin + 4, y + 17);
+  pdf.text(`GSTIN: ${supplier.gstin || ''}`, margin + 4, y + 22);
+  pdf.text(`PAN: ${supplier.pan || ''}`, margin + 4, y + 27);
+  pdf.text(`FSSAI: ${supplier.fssai || ''}`, margin + 4, y + 32);
+
+  // Billed To
+  const rightX = margin + cardWidth + 6;
+  pdf.setFillColor(...LIGHT_CARD_BG);
+  pdf.roundedRect(rightX, y, cardWidth, 42, 2, 2, 'F');
   pdf.setFontSize(10);
   pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(91, 62, 150);
-  pdf.text('Billed To', rightX + 4, y + 7);
-  pdf.setTextColor(0, 0, 0);
-  pdf.setFontSize(9);
+  pdf.setTextColor(88, 62, 181);
+  pdf.text('Billed To', rightX + 4, y + 6);
+
+  pdf.setFontSize(8.5);
   pdf.setFont('helvetica', 'bold');
-  pdf.text(hotel.hotelName || '', rightX + 4, y + 14);
+  pdf.setTextColor(17, 24, 39);
+  pdf.text(hotel.hotelName || 'TAJ Coromandel Hotel', rightX + 4, y + 12);
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(7);
-  let billedToY = y + 19;
-  const hotelAddr = [hotel.address, hotel.city, hotel.state, hotel.pincode].filter(Boolean).join(', ');
-  if (hotelAddr) { pdf.text(hotelAddr, rightX + 4, billedToY); billedToY += 4; }
-  if (hotel.gstin) { pdf.text(`GSTIN: ${hotel.gstin}`, rightX + 4, billedToY); billedToY += 4; }
-  if (hotel.pan) { pdf.text(`PAN: ${hotel.pan}`, rightX + 4, billedToY); billedToY += 4; }
-  if (hotel.fssai) { pdf.text(`FSSAI: ${hotel.fssai}`, rightX + 4, billedToY); billedToY += 4; }
-  if (hotel.contactPerson) { pdf.text(`Contact: ${hotel.contactPerson}`, rightX + 4, billedToY); }
+  pdf.setTextColor(55, 65, 81);
+  const hotelLines = pdf.splitTextToSize(
+    `${hotel.address || ''}\n${hotel.city || ''} ${hotel.country || ''} ${hotel.pincode || ''}`.trim(),
+    cardWidth - 8
+  );
+  pdf.text(hotelLines, rightX + 4, y + 17);
 
-  y += 52;
+  y += 48;
 
-  // ===== ITEMS TABLE =====
+  // Table
   const tableData = invoice.items.map((item, idx) => [
-    (idx + 1).toString(),
-    item.productNameSnapshot.toUpperCase(),
-    formatDisplayDate(item.deliveryDate),
+    `${idx + 1}.  ${item.productNameSnapshot.toUpperCase()}`,
+    item.deliveryDate ? formatDisplayDate(item.deliveryDate) : '',
     isWeightUnit(item.unit) ? (item.quantityGrams / 1000).toString() : item.quantity.toString(),
-    item.unit,
-    formatCurrency(item.finalBillingRate),
+    item.unit === 'kg' ? 'kgs' : item.unit,
+    `₹${paiseToRupees(item.finalBillingRate).toLocaleString('en-IN')}`,
     formatCurrency(item.igstAmount),
     formatCurrency(item.lineTotal),
-    item.deliveryTime || '-',
+    item.deliveryTime || '',
   ]);
 
   autoTable(pdf, {
     startY: y,
-    head: [['#', 'Item', 'Delivered On', 'Qty', 'Unit', 'Rate', 'IGST', 'Total', 'Delivery Time']],
+    head: [['Item', 'Delivered\non', 'Quantity', 'Unit', 'Rate', 'IGST', 'Total', 'DELIVERY TIME']],
     body: tableData,
     margin: { left: margin, right: margin },
     headStyles: {
-      fillColor: [91, 62, 150],
+      fillColor: [84, 57, 168],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
-      fontSize: 7,
+      fontSize: 7.5,
       halign: 'left',
     },
     bodyStyles: {
-      fontSize: 7,
+      fontSize: 7.5,
       cellPadding: 2,
     },
     alternateRowStyles: {
-      fillColor: [248, 247, 252],
+      fillColor: [247, 248, 253],
     },
     columnStyles: {
-      0: { cellWidth: 8, halign: 'center' },
-      3: { halign: 'right' },
-      5: { halign: 'right' },
-      6: { halign: 'right' },
-      7: { halign: 'right', fontStyle: 'bold' },
-    },
-    didDrawPage: (data) => {
-      // Repeat header on new pages
-      if (data.pageNumber > 1) {
-        pdf.setFillColor(PURPLE);
-        pdf.rect(0, 0, pageWidth, 12, 'F');
-        pdf.setTextColor(255, 255, 255);
-        pdf.setFontSize(8);
-        pdf.text(`${invoice.invoiceNumber} — Page ${data.pageNumber}`, margin, 8);
-        pdf.setTextColor(0, 0, 0);
-      }
+      0: { cellWidth: 55 },
+      1: { cellWidth: 22, halign: 'center', fillColor: [238, 241, 250] },
+      2: { cellWidth: 16, halign: 'center' },
+      3: { cellWidth: 14, halign: 'center' },
+      4: { cellWidth: 18, halign: 'right' },
+      5: { cellWidth: 18, halign: 'right' },
+      6: { cellWidth: 20, halign: 'right', fontStyle: 'bold' },
+      7: { cellWidth: 19, halign: 'right' },
     },
   });
 
-  // Get final Y after table
   const autoTableState = pdf as unknown as { lastAutoTable?: { finalY?: number } };
-  y = autoTableState.lastAutoTable?.finalY ?? (y + 20);
-  y += 5;
+  y = autoTableState.lastAutoTable?.finalY ?? (y + 30);
+  y += 6;
 
-  // ===== TOTAL IN WORDS =====
-  addNewPageIfNeeded(40);
-  pdf.setFillColor(248, 247, 252);
-  pdf.roundedRect(margin, y, contentWidth, 10, 1, 1, 'F');
-  pdf.setFontSize(7);
+  // Financial summary & words
+  pdf.setFontSize(7.5);
   pdf.setFont('helvetica', 'bold');
-  pdf.text(`Total (in words): ${invoice.totalInWords}`, margin + 3, y + 6);
-  y += 14;
+  pdf.setTextColor(24, 24, 27);
+  pdf.text(`Total (in words) : ${invoice.totalInWords}`, margin, y, { maxWidth: contentWidth * 0.58 });
 
-  // ===== UPI SECTION =====
-  if (invoice.payment.upiId) {
-    addNewPageIfNeeded(30);
-    pdf.setFontSize(8);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Scan to pay via UPI', margin, y);
-    y += 5;
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(7);
-    pdf.text(`UPI ID: ${invoice.payment.upiId}`, margin, y);
-    y += 4;
-    if (invoice.payment.upiName) {
-      pdf.text(`UPI Name: ${invoice.payment.upiName}`, margin, y);
-      y += 4;
-    }
-    pdf.text('Maximum of 1 lakh can be transferred via UPI in a single day.', margin, y);
-    y += 8;
-  }
-
-  // ===== TOTALS =====
-  addNewPageIfNeeded(30);
-  const totalsX = pageWidth - margin - 70;
-  pdf.setFontSize(8);
+  const totalsX = pageWidth - margin - 60;
   pdf.setFont('helvetica', 'normal');
-  pdf.text('Amount:', totalsX, y);
+  pdf.text('Amount', totalsX, y);
   pdf.text(formatCurrency(invoice.subtotal), pageWidth - margin, y, { align: 'right' });
-  y += 5;
-  pdf.text('IGST:', totalsX, y);
+  y += 4.5;
+  pdf.text('IGST', totalsX, y);
   pdf.text(formatCurrency(invoice.tax.taxAmount), pageWidth - margin, y, { align: 'right' });
   y += 2;
-  pdf.setDrawColor(91, 62, 150);
+  pdf.setDrawColor(24, 24, 27);
   pdf.line(totalsX, y, pageWidth - margin, y);
-  y += 5;
-  pdf.setFontSize(10);
+  y += 4;
   pdf.setFont('helvetica', 'bold');
-  pdf.text('Total (INR):', totalsX, y);
-  pdf.setTextColor(91, 62, 150);
+  pdf.text('Total (INR)', totalsX, y);
   pdf.text(formatCurrency(invoice.grandTotal), pageWidth - margin, y, { align: 'right' });
-  pdf.setTextColor(0, 0, 0);
+  y += 2;
+  pdf.line(totalsX, y, pageWidth - margin, y);
+
   y += 10;
+  // UPI
+  pdf.setFontSize(8.5);
+  pdf.setTextColor(88, 62, 181);
+  pdf.text('Scan to pay via UPI', margin, y);
+  y += 3.5;
+  pdf.setFontSize(6.5);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setTextColor(107, 114, 128);
+  pdf.text('Maximum of 1 lakh can be transferred via upi in a single day', margin, y);
+  y += 4;
+  pdf.setFontSize(7.5);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(24, 24, 27);
+  pdf.text(invoice.payment?.upiId || 'ironvalleyagronomy@idfcbank', margin, y);
 
-  // ===== TERMS =====
-  if (invoice.termsAndConditions) {
-    addNewPageIfNeeded(20);
-    pdf.setFontSize(7);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Terms & Conditions:', margin, y);
-    y += 4;
-    pdf.setFont('helvetica', 'normal');
-    const lines = pdf.splitTextToSize(invoice.termsAndConditions, contentWidth);
-    lines.forEach((line: string) => {
-      addNewPageIfNeeded(5);
-      pdf.text(line, margin, y);
-      y += 3.5;
-    });
-    y += 3;
-  }
+  y += 8;
+  // Terms
+  pdf.setFontSize(8.5);
+  pdf.setTextColor(88, 62, 181);
+  pdf.text('Terms and Conditions', margin, y);
+  y += 4;
+  pdf.setFontSize(6.5);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setTextColor(55, 65, 81);
+  const termsLines = pdf.splitTextToSize(
+    invoice.termsAndConditions ||
+      '1. Please pay within 2 days from the date of invoice\n2. Please use the UPI ID in the invoice to remit the amount',
+    contentWidth
+  );
+  pdf.text(termsLines, margin, y);
 
-  // ===== FOOTER =====
-  if (supplier.phone || supplier.email) {
-    addNewPageIfNeeded(10);
-    pdf.setFontSize(7);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setTextColor(128, 128, 128);
-    const contactLine = [`Phone: ${supplier.phone}`, `Email: ${supplier.email}`].filter(v => !v.endsWith(': ')).join(' | ');
-    pdf.text(contactLine, pageWidth / 2, pdf.internal.pageSize.getHeight() - 10, { align: 'center' });
-  }
-
-  // Save
-  pdf.save(`Invoice-${invoice.invoiceNumber}.pdf`);
+  pdf.save(`Invoice_${invoice.invoiceNumber}.pdf`);
 }

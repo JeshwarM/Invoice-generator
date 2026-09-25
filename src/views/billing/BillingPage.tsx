@@ -27,7 +27,8 @@ import {
 } from '../../utils/calculations';
 import { numberToIndianWords } from '../../utils/currency';
 import { formatInputDate, formatDisplayDate } from '../../utils/date';
-import type { Hotel, Contract, ContractItem, BillItem, CompanySettings } from '../../types';
+import type { Hotel, Contract, ContractItem, BillItem, CompanySettings, Invoice } from '../../types';
+import InvoiceDocument from '../../components/invoice/InvoiceDocument';
 
 type BillingStep = 'select-hotel' | 'enter-items' | 'invoice-details' | 'preview' | 'finalized';
 
@@ -79,7 +80,8 @@ const BillingPage: React.FC = () => {
         const [h, cs] = await Promise.all([getHotels(true), getCompanySettings()]);
         setHotels(h);
         setCompanySettings(cs);
-        setIgstRate(cs.defaultIgstRate || 0);
+        // Default GST is 0% (manual entry only as requested)
+        setIgstRate(0);
       } catch {
         setError('Failed to load data.');
       } finally {
@@ -145,6 +147,15 @@ const BillingPage: React.FC = () => {
       return { ...item, lineTotal, igstAmount };
     });
   }, []);
+
+  const handleIgstRateChange = (newRate: number) => {
+    const rate = Math.max(0, newRate);
+    setIgstRate(rate);
+    setBillItems((prev) => {
+      const updated = prev.map((item) => ({ ...item, igstRate: rate }));
+      return recalculate(updated);
+    });
+  };
 
   const updateItemQuantity = (index: number, value: string, isGrams: boolean = false) => {
     setBillItems((prev) => {
@@ -435,6 +446,20 @@ const BillingPage: React.FC = () => {
                 <div className="d-flex justify-content-between mb-2">
                   <span>Subtotal:</span><strong>{formatCurrency(subtotal)}</strong>
                 </div>
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <span>Manual IGST Rate (%):</span>
+                  <div style={{ width: 100 }}>
+                    <CFormInput
+                      type="number"
+                      size="sm"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={igstRate}
+                      onChange={(e) => handleIgstRateChange(Number(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
                 <div className="d-flex justify-content-between mb-2">
                   <span>IGST ({igstRate}%):</span><strong>{formatCurrency(totalIgst)}</strong>
                 </div>
@@ -508,10 +533,19 @@ const BillingPage: React.FC = () => {
               </CCol>
               <CCol md={4}>
                 <CCard>
-                  <CCardHeader className="bg-light"><strong>Tax Information</strong></CCardHeader>
+                  <CCardHeader className="bg-light"><strong>Tax Information (Manual Entry)</strong></CCardHeader>
                   <CCardBody>
-                    <p className="mb-1 small">Tax Type: IGST</p>
-                    <p className="mb-1 small">IGST Rate: {igstRate}%</p>
+                    <div className="mb-2">
+                      <CFormLabel className="small fw-semibold">IGST Rate (%) (Manual entry, default 0%):</CFormLabel>
+                      <CFormInput
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={igstRate}
+                        onChange={(e) => handleIgstRateChange(Number(e.target.value) || 0)}
+                      />
+                    </div>
                     <p className="mb-1 small">Taxable Amount: {formatCurrency(subtotal)}</p>
                     <p className="mb-1 small">IGST Amount: {formatCurrency(totalIgst)}</p>
                   </CCardBody>
@@ -550,110 +584,104 @@ const BillingPage: React.FC = () => {
       )}
 
       {/* STEP 4: PREVIEW */}
-      {step === 'preview' && selectedHotel && companySettings && contract && (
-        <CCard>
-          <CCardHeader>
-            <div className="d-flex justify-content-between">
-              <strong>Invoice Preview</strong>
-              <CButton color="outline-secondary" size="sm" onClick={() => setStep('invoice-details')}>Back & Edit</CButton>
-            </div>
-          </CCardHeader>
-          <CCardBody>
-            {/* Invoice Preview Rendering */}
-            <div className="border rounded p-4 bg-white" style={{ maxWidth: 800, margin: '0 auto' }}>
-              <div className="text-center mb-4">
-                <h3 className="text-uppercase" style={{ color: '#5b3e96' }}>Sales Invoice</h3>
-                <p className="mb-0 small">Invoice Number: <em>Will be assigned on finalization</em></p>
-                <p className="small">Invoice Date: {formatDisplayDate(invoiceDate)}</p>
+      {step === 'preview' && selectedHotel && companySettings && contract && (() => {
+        const previewInvoice: Invoice = {
+          id: 'preview',
+          invoiceNumber: 'IVA_2627_2044',
+          invoiceDate: new Date(invoiceDate),
+          deliveryDate: new Date(deliveryDate),
+          contractId: contract.id,
+          contractNumber: contract.contractNumber,
+          status: 'draft',
+          supplierSnapshot: {
+            companyName: companySettings.companyName || 'IRONVALLEY AGRONOMY PRIVATE LIMITED',
+            companyLogo: companySettings.companyLogo,
+            address: companySettings.address || 'Tamil Nadu, India',
+            city: companySettings.city || '',
+            state: companySettings.state || 'Tamil Nadu',
+            pincode: companySettings.pincode || '',
+            country: companySettings.country || 'India',
+            gstin: companySettings.gstin || '33AAHCI7316M1ZC',
+            pan: companySettings.pan || 'AAHCI7316M',
+            fssai: companySettings.fssai || '12424002002920',
+            phone: companySettings.phone || '+91 96004 58450',
+            email: companySettings.email || 'info@ironvalleyagro.in',
+          },
+          hotelSnapshot: {
+            hotelName: selectedHotel.hotelName || 'TAJ Coromandel Hotel',
+            hotelLogo: selectedHotel.logoUrl,
+            address: selectedHotel.address || '37,Uthamar gandhi road, near makkal tv office,tirumurthy nagar nungambakkam,',
+            city: selectedHotel.city || 'Chennai',
+            state: selectedHotel.state || '',
+            pincode: selectedHotel.pincode || '600034',
+            country: selectedHotel.country || 'India',
+            gstin: selectedHotel.gstin || '',
+            pan: selectedHotel.pan || '',
+            fssai: selectedHotel.fssai || '',
+            contactPerson: selectedHotel.contactPerson || '',
+            phone: selectedHotel.phone || '',
+            email: selectedHotel.email || '',
+          },
+          items: activeItems.map((item) => ({
+            productId: item.productId,
+            productNameSnapshot: item.productName,
+            quantity: item.quantity,
+            quantityGrams: item.quantityGrams,
+            unit: item.unit,
+            contractRate: item.contractRate,
+            finalBillingRate: item.finalRate,
+            rateOverridden: item.rateOverridden,
+            rateOverrideReason: item.rateOverrideReason,
+            igstRate: item.igstRate,
+            igstAmount: item.igstAmount,
+            lineTotal: item.lineTotal,
+            deliveryDate: item.deliveryDate,
+            deliveryTime: item.deliveryTime,
+          })),
+          tax: {
+            taxType: 'IGST',
+            taxRate: igstRate,
+            taxableAmount: subtotal,
+            taxAmount: totalIgst,
+          },
+          payment: {
+            upiId: companySettings.upiId || 'ironvalleyagronomy@idfcbank',
+            upiName: companySettings.upiName || 'IRONVALLEY AGRONOMY PRIVATE LIMITED',
+            upiQrUrl: companySettings.upiQrUrl,
+          },
+          subtotal,
+          grandTotal,
+          totalInWords: numberToIndianWords(paiseToRupees(grandTotal)),
+          termsAndConditions: companySettings.termsAndConditions,
+          pdfUrl: '',
+          createdBy: userProfile?.uid || '',
+          createdByName: userProfile?.name || '',
+          createdAt: new Date(),
+        };
+
+        return (
+          <CCard className="shadow-sm">
+            <CCardHeader>
+              <div className="d-flex justify-content-between align-items-center">
+                <strong>Invoice Preview</strong>
+                <CButton color="outline-secondary" size="sm" onClick={() => setStep('invoice-details')}>Back & Edit</CButton>
               </div>
-              <CRow className="g-3 mb-4">
-                <CCol md={6}>
-                  <div className="p-3 border rounded bg-light">
-                    <h6 style={{ color: '#5b3e96' }}>Billed By</h6>
-                    <strong>{companySettings.companyName}</strong>
-                    <p className="mb-0 small">{companySettings.address}, {companySettings.city}, {companySettings.state} {companySettings.pincode}</p>
-                    {companySettings.gstin && <p className="mb-0 small">GSTIN: {companySettings.gstin}</p>}
-                    {companySettings.pan && <p className="mb-0 small">PAN: {companySettings.pan}</p>}
-                    {companySettings.fssai && <p className="mb-0 small">FSSAI: {companySettings.fssai}</p>}
-                  </div>
-                </CCol>
-                <CCol md={6}>
-                  <div className="p-3 border rounded bg-light">
-                    <h6 style={{ color: '#5b3e96' }}>Billed To</h6>
-                    <strong>{selectedHotel.hotelName}</strong>
-                    <p className="mb-0 small">{selectedHotel.address}, {selectedHotel.city}, {selectedHotel.state} {selectedHotel.pincode}</p>
-                    {selectedHotel.gstin && <p className="mb-0 small">GSTIN: {selectedHotel.gstin}</p>}
-                    {selectedHotel.pan && <p className="mb-0 small">PAN: {selectedHotel.pan}</p>}
-                  </div>
-                </CCol>
-              </CRow>
-              <CTable bordered small className="mb-3">
-                <CTableHead>
-                  <CTableRow style={{ backgroundColor: '#5b3e96', color: 'white' }}>
-                    <CTableHeaderCell>#</CTableHeaderCell>
-                    <CTableHeaderCell>Item</CTableHeaderCell>
-                    <CTableHeaderCell>Delivered On</CTableHeaderCell>
-                    <CTableHeaderCell className="text-end">Qty</CTableHeaderCell>
-                    <CTableHeaderCell>Unit</CTableHeaderCell>
-                    <CTableHeaderCell className="text-end">Rate</CTableHeaderCell>
-                    <CTableHeaderCell className="text-end">IGST</CTableHeaderCell>
-                    <CTableHeaderCell className="text-end">Total</CTableHeaderCell>
-                    <CTableHeaderCell>Delivery Time</CTableHeaderCell>
-                  </CTableRow>
-                </CTableHead>
-                <CTableBody>
-                  {activeItems.map((item, idx) => (
-                    <CTableRow key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#f8f7fc' : 'white' }}>
-                      <CTableDataCell>{idx + 1}</CTableDataCell>
-                      <CTableDataCell>
-                        <strong>{item.productName.toUpperCase()}</strong>
-                        {item.rateOverridden && <span className="ms-1 text-warning" title={item.rateOverrideReason}>⚠️</span>}
-                      </CTableDataCell>
-                      <CTableDataCell>{formatDisplayDate(deliveryDate)}</CTableDataCell>
-                      <CTableDataCell className="text-end">
-                        {isWeightUnit(item.unit) ? item.quantity : item.quantity}
-                      </CTableDataCell>
-                      <CTableDataCell>{item.unit}</CTableDataCell>
-                      <CTableDataCell className="text-end">{formatCurrency(item.finalRate)}</CTableDataCell>
-                      <CTableDataCell className="text-end">{formatCurrency(item.igstAmount)}</CTableDataCell>
-                      <CTableDataCell className="text-end"><strong>{formatCurrency(item.lineTotal)}</strong></CTableDataCell>
-                      <CTableDataCell>{item.deliveryTime || '—'}</CTableDataCell>
-                    </CTableRow>
-                  ))}
-                </CTableBody>
-              </CTable>
-              <div className="mb-3 p-2 bg-light rounded small">
-                <strong>Total (in words):</strong> {numberToIndianWords(paiseToRupees(grandTotal))}
+            </CCardHeader>
+            <CCardBody className="p-3 p-md-4 bg-light">
+              <div className="bg-white rounded shadow-sm border p-2 p-md-4 mb-4" style={{ overflowX: 'auto' }}>
+                <InvoiceDocument invoice={previewInvoice} id="invoice-preview-root" />
               </div>
-              <CRow>
-                <CCol md={{ offset: 7, span: 5 }}>
-                  <div className="d-flex justify-content-between mb-1 small"><span>Amount:</span><span>{formatCurrency(subtotal)}</span></div>
-                  <div className="d-flex justify-content-between mb-1 small"><span>IGST:</span><span>{formatCurrency(totalIgst)}</span></div>
-                  <hr className="my-1" />
-                  <div className="d-flex justify-content-between fw-bold"><span>Total (INR):</span><span className="text-primary">{formatCurrency(grandTotal)}</span></div>
-                </CCol>
-              </CRow>
-              {companySettings.upiId && (
-                <div className="mt-3 p-2 border rounded text-center small">
-                  <strong>UPI Payment:</strong> {companySettings.upiId}
-                </div>
-              )}
-              {companySettings.termsAndConditions && (
-                <div className="mt-3 small text-body-secondary">
-                  <strong>Terms & Conditions:</strong>
-                  <pre className="mb-0" style={{ whiteSpace: 'pre-wrap', fontSize: '0.75rem' }}>{companySettings.termsAndConditions}</pre>
-                </div>
-              )}
-            </div>
-            <div className="mt-4 d-flex gap-2 justify-content-center">
-              <CButton color="outline-secondary" onClick={() => setStep('invoice-details')}>Back & Edit</CButton>
-              <CButton color="success" onClick={() => setFinalizeConfirm(true)} disabled={submitting}>
-                <CIcon icon={cilMediaPlay} className="me-1" />Generate Final Invoice
-              </CButton>
-            </div>
-          </CCardBody>
-        </CCard>
-      )}
+
+              <div className="d-flex gap-2 justify-content-center">
+                <CButton color="outline-secondary" onClick={() => setStep('invoice-details')}>Back & Edit</CButton>
+                <CButton color="success" size="lg" onClick={() => setFinalizeConfirm(true)} disabled={submitting}>
+                  <CIcon icon={cilMediaPlay} className="me-1" />Generate Final Invoice
+                </CButton>
+              </div>
+            </CCardBody>
+          </CCard>
+        );
+      })()}
 
       {/* Rate Override Modal */}
       <CModal visible={overrideModal} onClose={() => setOverrideModal(false)} alignment="center">

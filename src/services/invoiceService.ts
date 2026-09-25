@@ -60,11 +60,81 @@ function mapInvoice(id: string, data: Record<string, unknown>): Invoice {
   };
 }
 
+export const SAMPLE_INVOICE: Invoice = {
+  id: 'inv_iva_2627_2044',
+  invoiceNumber: 'IVA_2627_2044',
+  invoiceDate: new Date('2026-09-19'),
+  deliveryDate: new Date('2026-09-19'),
+  contractId: 'contract_taj_coromandel',
+  contractNumber: 'CNT_2627_01',
+  status: 'finalized',
+  supplierSnapshot: {
+    companyName: 'IRONVALLEY AGRONOMY PRIVATE LIMITED',
+    companyLogo: '',
+    address: 'Tamil Nadu, India',
+    city: '',
+    state: 'Tamil Nadu',
+    pincode: '',
+    country: 'India',
+    gstin: '33AAHCI7316M1ZC',
+    pan: 'AAHCI7316M',
+    fssai: '12424002002920',
+    phone: '+91 96004 58450',
+    email: 'info@ironvalleyagro.in',
+  },
+  hotelSnapshot: {
+    hotelName: 'TAJ Coromandel Hotel',
+    hotelLogo: '',
+    address: '37,Uthamar gandhi road, near makkal tv office,tirumurthy nagar nungambakkam,',
+    city: 'Chennai',
+    state: '',
+    pincode: '600034',
+    country: 'India',
+    gstin: '',
+    pan: '',
+    fssai: '',
+    contactPerson: '',
+    phone: '',
+    email: '',
+  },
+  items: [
+    { productId: 'prod_1', productNameSnapshot: 'EDIBLE FLOWER', quantity: 2, quantityGrams: 0, unit: 'box', contractRate: 45000, finalBillingRate: 45000, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 90000, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_2', productNameSnapshot: 'WHITE RADISH MICROGREENS', quantity: 1, quantityGrams: 0, unit: 'box', contractRate: 17000, finalBillingRate: 17000, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 17000, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_3', productNameSnapshot: 'YELLOW ZUCCINI', quantity: 15, quantityGrams: 15000, unit: 'kg', contractRate: 8000, finalBillingRate: 8000, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 120000, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_4', productNameSnapshot: 'GREEN ZUCCHINI', quantity: 14, quantityGrams: 14000, unit: 'kg', contractRate: 8000, finalBillingRate: 8000, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 112000, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_5', productNameSnapshot: 'BABY CORN', quantity: 32, quantityGrams: 32000, unit: 'kg', contractRate: 12000, finalBillingRate: 12000, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 384000, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_6', productNameSnapshot: 'PARSLEY', quantity: 0.5, quantityGrams: 500, unit: 'kg', contractRate: 12000, finalBillingRate: 12000, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 6000, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_7', productNameSnapshot: 'BROCOLLI', quantity: 14, quantityGrams: 14000, unit: 'kg', contractRate: 13500, finalBillingRate: 13500, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 189000, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_8', productNameSnapshot: 'CELERY', quantity: 1, quantityGrams: 1000, unit: 'kg', contractRate: 9400, finalBillingRate: 9400, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 9400, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_9', productNameSnapshot: 'POKCHAI', quantity: 4, quantityGrams: 4000, unit: 'kg', contractRate: 8000, finalBillingRate: 8000, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 32000, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_10', productNameSnapshot: 'YELLOW CAPSICUM', quantity: 12, quantityGrams: 12000, unit: 'kg', contractRate: 12000, finalBillingRate: 12000, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 144000, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_11', productNameSnapshot: 'RED CAPSICUM', quantity: 12, quantityGrams: 12000, unit: 'kg', contractRate: 12000, finalBillingRate: 12000, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 144000, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_12', productNameSnapshot: 'RED CHERRY TOMATO', quantity: 3, quantityGrams: 3000, unit: 'kg', contractRate: 9900, finalBillingRate: 9900, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 29700, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_13', productNameSnapshot: 'THYME', quantity: 0.5, quantityGrams: 500, unit: 'kg', contractRate: 25500, finalBillingRate: 25500, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 12750, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_14', productNameSnapshot: 'BEANS SUGARSNAPS', quantity: 1, quantityGrams: 1000, unit: 'kg', contractRate: 240000, finalBillingRate: 240000, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 240000, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+    { productId: 'prod_15', productNameSnapshot: 'ROMAINE lettuce', quantity: 1, quantityGrams: 1000, unit: 'kg', contractRate: 12000, finalBillingRate: 12000, rateOverridden: false, rateOverrideReason: '', igstRate: 0, igstAmount: 0, lineTotal: 12000, deliveryDate: new Date('2026-09-19'), deliveryTime: '' },
+  ],
+  tax: { taxType: 'IGST', taxRate: 0, taxableAmount: 1541850, taxAmount: 0 },
+  payment: {
+    upiId: 'ironvalleyagronomy@idfcbank',
+    upiName: 'IRONVALLEY AGRONOMY PRIVATE LIMITED',
+    upiQrUrl: '',
+  },
+  subtotal: 1541850,
+  grandTotal: 1541850,
+  totalInWords: 'FIFTEEN THOUSAND FOUR HUNDRED EIGHTEEN RUPEES AND FIFTY PAISE ONLY',
+  termsAndConditions: `1. Please pay within 2 days from the date of invoice\n2. Please use the UPI ID in the invoice to remit the amount\n3. In an highly unlikely case, if you're not satisfied with our product delivered to you and you don't want to pay, we respect it and we'd love to have your feedback @ +91 9600458450`,
+  pdfUrl: '',
+  createdBy: 'system',
+  createdByName: 'System Controller',
+  createdAt: new Date('2026-09-19T10:00:00Z'),
+};
+
 export async function getInvoices(filters?: {
   hotelName?: string;
   status?: InvoiceStatus;
 }): Promise<Invoice[]> {
-  const cached = getCachedData<Invoice[]>(CACHE_KEYS.INVOICES, []);
+  const cached = getCachedData<Invoice[]>(CACHE_KEYS.INVOICES, [SAMPLE_INVOICE]);
   let filtered = cached;
 
   if (filters?.status) {

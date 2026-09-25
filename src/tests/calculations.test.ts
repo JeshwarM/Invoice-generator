@@ -131,7 +131,7 @@ describe('Indian Currency In Words', () => {
 
   it('converts lakhs and thousands correctly', () => {
     const result = numberToIndianWords(15418.5);
-    expect(result).toBe('FIFTEEN THOUSAND FOUR HUNDRED AND EIGHTEEN RUPEES AND FIFTY PAISE ONLY');
+    expect(result).toBe('FIFTEEN THOUSAND FOUR HUNDRED EIGHTEEN RUPEES AND FIFTY PAISE ONLY');
   });
 
   it('handles crores correctly', () => {

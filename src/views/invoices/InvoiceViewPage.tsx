@@ -18,6 +18,7 @@ import { formatDisplayDate } from '../../utils/date';
 import { formatCurrency, paiseToRupees, isWeightUnit } from '../../utils/calculations';
 import type { Invoice } from '../../types';
 import { generateInvoicePDF } from '../../services/pdfService';
+import InvoiceDocument from '../../components/invoice/InvoiceDocument';
 
 const InvoiceViewPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -113,116 +114,10 @@ const InvoiceViewPage: React.FC = () => {
       )}
 
       {/* Invoice Rendering */}
-      <CCard>
-        <CCardBody>
-          <div className="border rounded p-4 bg-white" id="invoice-content">
-            {/* Header */}
-            <div className="text-center mb-4">
-              <h3 className="text-uppercase" style={{ color: '#5b3e96', letterSpacing: 2 }}>Sales Invoice</h3>
-              <CRow className="justify-content-center">
-                <CCol md={4} className="text-start"><strong>Invoice No:</strong> {invoice.invoiceNumber}</CCol>
-                <CCol md={4} className="text-end"><strong>Invoice Date:</strong> {formatDisplayDate(invoice.invoiceDate)}</CCol>
-              </CRow>
-            </div>
-
-            {/* Billed By / Billed To */}
-            <CRow className="g-3 mb-4">
-              <CCol md={6}>
-                <div className="p-3 border rounded" style={{ backgroundColor: '#f8f7fc' }}>
-                  <h6 style={{ color: '#5b3e96' }}>Billed By</h6>
-                  {supplier.companyLogo && <img src={supplier.companyLogo} alt="Company Logo" style={{ maxHeight: 50, marginBottom: 8 }} />}
-                  <p className="mb-1"><strong>{supplier.companyName}</strong></p>
-                  <p className="mb-1 small">{supplier.address}{supplier.city ? `, ${supplier.city}` : ''}{supplier.state ? `, ${supplier.state}` : ''} {supplier.pincode}</p>
-                  {supplier.gstin && <p className="mb-1 small"><strong>GSTIN:</strong> {supplier.gstin}</p>}
-                  {supplier.pan && <p className="mb-1 small"><strong>PAN:</strong> {supplier.pan}</p>}
-                  {supplier.fssai && <p className="mb-1 small"><strong>FSSAI:</strong> {supplier.fssai}</p>}
-                </div>
-              </CCol>
-              <CCol md={6}>
-                <div className="p-3 border rounded" style={{ backgroundColor: '#f8f7fc' }}>
-                  <h6 style={{ color: '#5b3e96' }}>Billed To</h6>
-                  {hotel.hotelLogo && <img src={hotel.hotelLogo} alt="Hotel Logo" style={{ maxHeight: 50, marginBottom: 8 }} />}
-                  <p className="mb-1"><strong>{hotel.hotelName}</strong></p>
-                  <p className="mb-1 small">{hotel.address}{hotel.city ? `, ${hotel.city}` : ''}{hotel.state ? `, ${hotel.state}` : ''} {hotel.pincode}</p>
-                  {hotel.gstin && <p className="mb-1 small"><strong>GSTIN:</strong> {hotel.gstin}</p>}
-                  {hotel.pan && <p className="mb-1 small"><strong>PAN:</strong> {hotel.pan}</p>}
-                  {hotel.fssai && <p className="mb-1 small"><strong>FSSAI:</strong> {hotel.fssai}</p>}
-                </div>
-              </CCol>
-            </CRow>
-
-            {/* Items Table */}
-            <CTable bordered small className="mb-3">
-              <CTableHead>
-                <CTableRow style={{ backgroundColor: '#5b3e96', color: 'white' }}>
-                  <CTableHeaderCell style={{ width: 40 }}>#</CTableHeaderCell>
-                  <CTableHeaderCell>Item</CTableHeaderCell>
-                  <CTableHeaderCell>Delivered On</CTableHeaderCell>
-                  <CTableHeaderCell className="text-end">Qty</CTableHeaderCell>
-                  <CTableHeaderCell>Unit</CTableHeaderCell>
-                  <CTableHeaderCell className="text-end">Rate</CTableHeaderCell>
-                  <CTableHeaderCell className="text-end">IGST</CTableHeaderCell>
-                  <CTableHeaderCell className="text-end">Total</CTableHeaderCell>
-                  <CTableHeaderCell>Delivery Time</CTableHeaderCell>
-                </CTableRow>
-              </CTableHead>
-              <CTableBody>
-                {invoice.items.map((item, idx) => (
-                  <CTableRow key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#f8f7fc' : 'white' }}>
-                    <CTableDataCell>{idx + 1}</CTableDataCell>
-                    <CTableDataCell>
-                      <strong>{item.productNameSnapshot.toUpperCase()}</strong>
-                      {item.rateOverridden && <span className="ms-1 text-warning" title={item.rateOverrideReason}>⚠️</span>}
-                    </CTableDataCell>
-                    <CTableDataCell>{formatDisplayDate(item.deliveryDate)}</CTableDataCell>
-                    <CTableDataCell className="text-end">
-                      {isWeightUnit(item.unit) ? (item.quantityGrams / 1000) : item.quantity}
-                    </CTableDataCell>
-                    <CTableDataCell>{item.unit}</CTableDataCell>
-                    <CTableDataCell className="text-end">{formatCurrency(item.finalBillingRate)}</CTableDataCell>
-                    <CTableDataCell className="text-end">{formatCurrency(item.igstAmount)}</CTableDataCell>
-                    <CTableDataCell className="text-end"><strong>{formatCurrency(item.lineTotal)}</strong></CTableDataCell>
-                    <CTableDataCell>{item.deliveryTime || '—'}</CTableDataCell>
-                  </CTableRow>
-                ))}
-              </CTableBody>
-            </CTable>
-
-            {/* Total in words */}
-            <div className="p-2 bg-light rounded mb-3 small">
-              <strong>Total (in words):</strong> {invoice.totalInWords}
-            </div>
-
-            {/* UPI */}
-            {invoice.payment.upiId && (
-              <div className="text-center mb-3 p-3 border rounded">
-                <strong>Scan to pay via UPI</strong>
-                {invoice.payment.upiQrUrl && (
-                  <div className="my-2"><img src={invoice.payment.upiQrUrl} alt="UPI QR" style={{ maxWidth: 150 }} /></div>
-                )}
-                <p className="mb-0 small">UPI ID: <strong>{invoice.payment.upiId}</strong></p>
-              </div>
-            )}
-
-            {/* Totals */}
-            <CRow>
-              <CCol md={{ offset: 7, span: 5 }}>
-                <div className="d-flex justify-content-between mb-1"><span>Amount:</span><span>{formatCurrency(invoice.subtotal)}</span></div>
-                <div className="d-flex justify-content-between mb-1"><span>IGST:</span><span>{formatCurrency(invoice.tax.taxAmount)}</span></div>
-                <hr className="my-1" />
-                <div className="d-flex justify-content-between fw-bold fs-5">
-                  <span>Total (INR):</span><span className="text-primary">{formatCurrency(invoice.grandTotal)}</span>
-                </div>
-              </CCol>
-            </CRow>
-
-            {/* Terms */}
-            {invoice.termsAndConditions && (
-              <div className="mt-4 small text-body-secondary">
-                <strong>Terms & Conditions:</strong>
-                <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.75rem' }}>{invoice.termsAndConditions}</pre>
-              </div>
-            )}
+      <CCard className="shadow-sm">
+        <CCardBody className="p-3 p-md-4 bg-light">
+          <div className="bg-white rounded shadow-sm border p-2 p-md-4" style={{ overflowX: 'auto' }}>
+            <InvoiceDocument invoice={invoice} id="invoice-document-root" />
           </div>
         </CCardBody>
       </CCard>

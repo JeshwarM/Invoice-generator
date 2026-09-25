@@ -26,7 +26,7 @@ function convertThreeDigits(n: number): string {
   if (remainder > 0) {
     parts.push(convertTwoDigits(remainder));
   }
-  return parts.join(' AND ');
+  return parts.join(' ');
 }
 
 /**

@@ -12,30 +12,32 @@ import { getCachedData, setCachedData, withTimeout, CACHE_KEYS } from '../utils/
 const SETTINGS_DOC = 'main';
 
 const defaultSettings: Omit<CompanySettings, 'updatedAt' | 'updatedBy'> = {
-  companyName: 'AgroBill Produce Suppliers',
+  companyName: 'IRONVALLEY AGRONOMY PRIVATE LIMITED',
   companyLogo: '',
-  address: '123 Wholesale Market Yard',
-  city: 'Chennai',
+  address: 'Tamil Nadu, India',
+  city: '',
   state: 'Tamil Nadu',
-  pincode: '600001',
+  pincode: '',
   country: 'India',
-  gstin: '33ABCDE1234F1Z5',
-  pan: 'ABCDE1234F',
-  fssai: '12345678901234',
-  phone: '9876543210',
-  email: 'accounts@agrobill.in',
+  gstin: '33AAHCI7316M1ZC',
+  pan: 'AAHCI7316M',
+  fssai: '12424002002920',
+  phone: '+91 96004 58450',
+  email: 'info@ironvalleyagro.in',
   invoicePrefix: 'IVA',
   fiscalYearStart: 4, // April
-  defaultIgstRate: 5,
-  termsAndConditions: `1. Payment is due within 15 days from the date of invoice.\n2. Goods once delivered are not returnable.\n3. Subject to local jurisdiction.\n4. E&OE (Errors and Omissions Excepted).`,
-  upiId: 'agrobill@upi',
-  upiName: 'AgroBill Produce',
+  defaultIgstRate: 0, // Manual entry only, default 0%
+  termsAndConditions: `1. Please pay within 2 days from the date of invoice\n2. Please use the UPI ID in the invoice to remit the amount\n3. In an highly unlikely case, if you're not satisfied with our product delivered to you and you don't want to pay, we respect it and we'd love to have your feedback @ +91 9600458450`,
+  upiId: 'ironvalleyagronomy@idfcbank',
+  upiName: 'IRONVALLEY AGRONOMY PRIVATE LIMITED',
   upiQrUrl: '',
 };
 
 export async function getCompanySettings(): Promise<CompanySettings> {
   const cached = getCachedData<CompanySettings | null>(CACHE_KEYS.SETTINGS, null);
-  if (cached) return cached;
+  if (cached && cached.companyName && !cached.companyName.includes('AgroBill Produce')) {
+    return cached;
+  }
 
   const initial: CompanySettings = {
     ...defaultSettings,

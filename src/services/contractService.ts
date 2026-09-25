@@ -50,8 +50,40 @@ function mapContractItem(id: string, data: Record<string, unknown>): ContractIte
   };
 }
 
+export const DEFAULT_CONTRACT: Contract = {
+  id: 'contract_taj_coromandel',
+  hotelId: 'hotel_taj_coromandel',
+  hotelName: 'TAJ Coromandel Hotel',
+  contractNumber: 'CNT_2627_01',
+  startDate: new Date('2026-01-01'),
+  endDate: new Date('2027-12-31'),
+  duration: 12,
+  status: 'active',
+  createdAt: new Date(),
+  createdBy: 'system',
+  updatedAt: new Date(),
+};
+
+export const DEFAULT_CONTRACT_ITEMS: ContractItem[] = [
+  { id: 'citem_1', contractId: 'contract_taj_coromandel', productId: 'prod_1', productName: 'EDIBLE FLOWER', unit: 'box', rate: 45000, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_2', contractId: 'contract_taj_coromandel', productId: 'prod_2', productName: 'WHITE RADISH MICROGREENS', unit: 'box', rate: 17000, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_3', contractId: 'contract_taj_coromandel', productId: 'prod_3', productName: 'YELLOW ZUCCINI', unit: 'kg', rate: 8000, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_4', contractId: 'contract_taj_coromandel', productId: 'prod_4', productName: 'GREEN ZUCCHINI', unit: 'kg', rate: 8000, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_5', contractId: 'contract_taj_coromandel', productId: 'prod_5', productName: 'BABY CORN', unit: 'kg', rate: 12000, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_6', contractId: 'contract_taj_coromandel', productId: 'prod_6', productName: 'PARSLEY', unit: 'kg', rate: 12000, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_7', contractId: 'contract_taj_coromandel', productId: 'prod_7', productName: 'BROCOLLI', unit: 'kg', rate: 13500, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_8', contractId: 'contract_taj_coromandel', productId: 'prod_8', productName: 'CELERY', unit: 'kg', rate: 9400, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_9', contractId: 'contract_taj_coromandel', productId: 'prod_9', productName: 'POKCHAI', unit: 'kg', rate: 8000, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_10', contractId: 'contract_taj_coromandel', productId: 'prod_10', productName: 'YELLOW CAPSICUM', unit: 'kg', rate: 12000, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_11', contractId: 'contract_taj_coromandel', productId: 'prod_11', productName: 'RED CAPSICUM', unit: 'kg', rate: 12000, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_12', contractId: 'contract_taj_coromandel', productId: 'prod_12', productName: 'RED CHERRY TOMATO', unit: 'kg', rate: 9900, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_13', contractId: 'contract_taj_coromandel', productId: 'prod_13', productName: 'THYME', unit: 'kg', rate: 25500, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_14', contractId: 'contract_taj_coromandel', productId: 'prod_14', productName: 'BEANS SUGARSNAPS', unit: 'kg', rate: 240000, active: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'citem_15', contractId: 'contract_taj_coromandel', productId: 'prod_15', productName: 'ROMAINE lettuce', unit: 'kg', rate: 12000, active: true, createdAt: new Date(), updatedAt: new Date() },
+];
+
 export async function getContracts(hotelId?: string): Promise<Contract[]> {
-  const cached = getCachedData<Contract[]>(CACHE_KEYS.CONTRACTS, []);
+  const cached = getCachedData<Contract[]>(CACHE_KEYS.CONTRACTS, [DEFAULT_CONTRACT]);
   const filteredCached = hotelId ? cached.filter((c) => c.hotelId === hotelId) : cached;
 
   try {
@@ -188,9 +220,14 @@ export async function createContract(
 }
 
 export async function getContractItems(contractId: string): Promise<ContractItem[]> {
-  const cached = getCachedData<ContractItem[]>(CACHE_KEYS.CONTRACT_ITEMS, []);
+  const cached = getCachedData<ContractItem[]>(CACHE_KEYS.CONTRACT_ITEMS, DEFAULT_CONTRACT_ITEMS);
   const matching = cached.filter((item) => item.contractId === contractId);
   if (matching.length > 0) return matching;
+
+  if (contractId === 'contract_taj_coromandel') {
+    setCachedData(CACHE_KEYS.CONTRACT_ITEMS, [...cached, ...DEFAULT_CONTRACT_ITEMS]);
+    return DEFAULT_CONTRACT_ITEMS;
+  }
 
   try {
     const q = query(
