@@ -1,0 +1,133 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Get user document
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Helper: Is user authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: Is user active
+    function isActive() {
+      return isAuthenticated() && getUserData().status == 'active';
+    }
+
+    // Helper: Is controller
+    function isController() {
+      return isActive() && getUserData().role == 'controller';
+    }
+
+    // Helper: Is employee or controller
+    function isActiveUser() {
+      return isActive();
+    }
+
+    // ============ ACCESS REQUESTS ============
+    // Anyone can create (public form), only controller can read/update
+    match /accessRequests/{requestId} {
+      allow create: if true; // Public access request submission
+      allow read: if isController();
+      allow update: if isController();
+      allow delete: if false; // Never delete
+    }
+
+    // ============ USERS ============
+    // Controller manages users; users can read their own profile
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isController());
+      allow create: if isController();
+      allow update: if isController() || (
+        request.auth.uid == userId &&
+        // Users can only update lastLoginAt on their own profile
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLoginAt'])
+      );
+      allow delete: if false; // Never delete users
+    }
+
+    // ============ HOTELS ============
+    match /hotels/{hotelId} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser();
+      allow update: if isActiveUser();
+      allow delete: if false; // Soft delete only
+    }
+
+    // ============ PRODUCTS ============
+    match /products/{productId} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser();
+      allow update: if isActiveUser();
+      allow delete: if false; // Soft delete only
+    }
+
+    // ============ CONTRACTS ============
+    match /contracts/{contractId} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser();
+      allow update: if isActiveUser();
+      allow delete: if false; // Never delete contracts
+    }
+
+    // ============ CONTRACT ITEMS ============
+    match /contractItems/{itemId} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser();
+      allow update: if isActiveUser();
+      allow delete: if isActiveUser(); // Can remove items from draft contracts
+    }
+
+    // ============ DRAFT BILLS ============
+    match /draftBills/{draftId} {
+      allow read: if isActiveUser() && (
+        resource.data.createdBy == request.auth.uid || isController()
+      );
+      allow create: if isActiveUser();
+      allow update: if isActiveUser() && (
+        resource.data.createdBy == request.auth.uid || isController()
+      );
+      allow delete: if isActiveUser() && (
+        resource.data.createdBy == request.auth.uid || isController()
+      );
+    }
+
+    // ============ INVOICES ============
+    match /invoices/{invoiceId} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser();
+      // Only allow status change to 'cancelled' by controller on finalized invoices
+      allow update: if isController() && (
+        resource.data.status == 'finalized' &&
+        request.resource.data.status == 'cancelled' &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'cancellationReason', 'cancelledBy', 'cancelledAt', 'previousStatus'])
+      );
+      allow delete: if false; // NEVER delete invoices
+    }
+
+    // ============ INVOICE COUNTERS ============
+    match /invoiceCounters/{yearId} {
+      allow read: if isActiveUser();
+      allow write: if isController(); // Cloud Functions bypass rules with admin SDK
+    }
+
+    // ============ AUDIT LOGS ============
+    // Append-only: create allowed for active users, read for controller only
+    match /auditLogs/{logId} {
+      allow read: if isController();
+      allow create: if isActiveUser();
+      allow update: if false; // Append-only
+      allow delete: if false; // Never delete audit logs
+    }
+
+    // ============ COMPANY SETTINGS ============
+    match /companySettings/{docId} {
+      allow read: if isActiveUser();
+      allow write: if isController();
+    }
+  }
+}

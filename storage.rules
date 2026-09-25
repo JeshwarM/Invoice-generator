@@ -1,0 +1,47 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper: Is user authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // ============ COMPANY LOGOS ============
+    match /company/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated()
+        && request.resource.size < 5 * 1024 * 1024  // Max 5MB
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // ============ HOTEL LOGOS ============
+    match /hotels/{hotelId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated()
+        && request.resource.size < 5 * 1024 * 1024  // Max 5MB
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // ============ UPI QR CODES ============
+    match /upi/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated()
+        && request.resource.size < 2 * 1024 * 1024  // Max 2MB
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // ============ GENERATED INVOICES (PDFs) ============
+    match /invoices/{invoiceId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated()
+        && request.resource.size < 10 * 1024 * 1024  // Max 10MB
+        && request.resource.contentType == 'application/pdf';
+    }
+
+    // Deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

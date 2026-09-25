@@ -1,0 +1,66 @@
+/* AgroBill - Global Styles */
+
+/* Override CoreUI sidebar dark theme for agricultural/business feel */
+:root {
+  --cui-sidebar-bg: #2c3e50;
+  --cui-sidebar-brand-bg: #243342;
+}
+
+/* Professional body styling */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: #f0f2f5;
+}
+
+/* Sidebar active link accent */
+.sidebar .nav-link.active {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Card border-top colors */
+.border-top-primary {
+  border-top-color: #3b82f6 !important;
+}
+.border-top-success {
+  border-top-color: #22c55e !important;
+}
+.border-top-warning {
+  border-top-color: #f59e0b !important;
+}
+.border-top-danger {
+  border-top-color: #ef4444 !important;
+}
+
+/* Table improvements */
+.table th {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+}
+
+/* Form labels */
+.form-label {
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+/* Status badge in table */
+.table .badge {
+  font-size: 0.75rem;
+}
+
+/* Invoice preview print styles */
+@media print {
+  .sidebar,
+  .header,
+  .footer,
+  .breadcrumb,
+  .no-print {
+    display: none !important;
+  }
+  .body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}
