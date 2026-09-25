@@ -412,6 +412,14 @@ const ContractFormPage: React.FC = () => {
             </div>
           </CCardHeader>
           <CCardBody>
+            {/* Informative Rate Card Note */}
+            <div className="alert alert-info py-2 px-3 mb-3 d-flex align-items-center">
+              <span className="me-2 fs-5">💡</span>
+              <small>
+                <strong>Rate Card Definition:</strong> You are setting the agreed rate (e.g. <strong>₹200 per 1 kg</strong>). When you deliver orders to the hotel, you will enter the delivered weights (e.g. 10 kg, 25.5 kg, 500 g) in the <strong>Billing</strong> section to calculate the total invoice amount.
+              </small>
+            </div>
+
             {/* Quick Add Any New Vegetable Bar */}
             <div className="p-3 mb-4 bg-light border rounded">
               <div className="fw-semibold small text-uppercase text-body-secondary mb-2">
@@ -452,7 +460,7 @@ const ContractFormPage: React.FC = () => {
                       type="number"
                       min="0"
                       step="0.01"
-                      placeholder="Price"
+                      placeholder="Rate / unit"
                       value={quickRate}
                       onChange={(e) => setQuickRate(e.target.value)}
                       onKeyDown={(e) => {
@@ -494,8 +502,8 @@ const ContractFormPage: React.FC = () => {
                     <CTableRow>
                       <CTableHeaderCell style={{ width: 50 }}>#</CTableHeaderCell>
                       <CTableHeaderCell>Vegetable / Product</CTableHeaderCell>
-                      <CTableHeaderCell style={{ width: 120 }}>Unit</CTableHeaderCell>
-                      <CTableHeaderCell style={{ width: 180 }}>Agreed Price (₹) *</CTableHeaderCell>
+                      <CTableHeaderCell style={{ width: 140 }}>Unit</CTableHeaderCell>
+                      <CTableHeaderCell style={{ width: 220 }}>Agreed Rate (₹ / Unit) *</CTableHeaderCell>
                       <CTableHeaderCell style={{ width: 80 }}>Actions</CTableHeaderCell>
                     </CTableRow>
                   </CTableHead>
@@ -507,7 +515,7 @@ const ContractFormPage: React.FC = () => {
                           <strong>{item.productName}</strong>
                         </CTableDataCell>
                         <CTableDataCell>
-                          <span className="badge bg-secondary-subtle text-body border">{item.unit}</span>
+                          <span className="badge bg-secondary-subtle text-body border px-2 py-1">per 1 {item.unit}</span>
                         </CTableDataCell>
                         <CTableDataCell>
                           <CInputGroup size="sm">
@@ -516,7 +524,7 @@ const ContractFormPage: React.FC = () => {
                               type="number"
                               min="0"
                               step="0.01"
-                              placeholder="0.00"
+                              placeholder="Rate per unit"
                               value={item.rateInRupees > 0 ? item.rateInRupees : ''}
                               onChange={(e) => handleUpdateProductRate(idx, parseFloat(e.target.value) || 0)}
                               disabled={submitting}
